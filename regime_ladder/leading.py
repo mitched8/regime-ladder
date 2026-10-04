@@ -179,7 +179,8 @@ def incremental_value(feature: pd.Series, labels: pd.Series, state_score: pd.Ser
     """One feature against the baseline that already knows the state.
 
     Outcome test: out-of-sample R^2 of `target` (a forward outcome aligned to the decision date) on
-    [state dummies + continuous state score] versus the same plus the feature; reports the R^2 gain and
+    [intercept + state dummies (reference coding) + standardised continuous state score and its square]
+    versus the same plus the feature; reports the R^2 gain and
     how many folds improve. Transition test: `transitions.oos_gain` with the standardised feature as the
     pressure, the standardised state score as the baseline covariate already in the tilt, and the k-step
     likelihood (k = 5 by default: where the state is a week out, not tonight's move — a smoothed
@@ -194,8 +195,14 @@ def incremental_value(feature: pd.Series, labels: pd.Series, state_score: pd.Ser
     if len(df) < 200 or f.std() == 0:
         return {"n": len(df), "retain": False}
     mu, sd = dt["f"].mean(), dt["f"].std()
-    D = pd.get_dummies(df["s"]).astype(float).values
-    base = np.column_stack([D, df["c"].values, df["c"].values ** 2])
+    # reference-state coding: intercept + dummies for every state but the most frequent, continuous score
+    # standardised. A state absent from a fold's training part then scores at the reference state's level
+    # (its column is all zero in training, so its coefficient is zero) — deterministic and invariant to how
+    # the continuous score is scaled, which a no-intercept design is not.
+    ref = df["s"].value_counts().idxmax()
+    D = pd.get_dummies(df["s"]).astype(float).drop(columns=[ref]).values
+    cz_ = ((df["c"] - state_score.mean()) / state_score.std()).values
+    base = np.column_stack([np.ones(len(df)), D, cz_, cz_ ** 2])
     fz = ((df["f"] - mu) / sd).values
     r2_base, pf_base = _oos_r2(base, df["y"].values, folds, min_train_frac)
     r2_feat, pf_feat = _oos_r2(np.column_stack([base, fz]), df["y"].values, folds, min_train_frac)
