@@ -33,22 +33,32 @@ STANDARD_COMBOS = {  # weights in vega units
 KEY = ["pair", "tenor_days", "entry_date", "age"]
 
 
-def to_vega_units(td: pd.DataFrame, vega_col: str = "vega") -> pd.DataFrame:
-    """Rescale each trade's P&L (and components) so that its vega at age 1 is one unit.
+def to_vega_units(td: pd.DataFrame, vega_col: str = "vega", legs=BASE_LEGS) -> pd.DataFrame:
+    """Rescale each BASE LEG trade's P&L (and components) so that its vega at age 1 is one unit.
 
-    Requires a per-day `vega` column in the trade-day table (vega of the live position per unit of
-    standard notional). Trades with zero or missing inception vega are dropped and counted.
+    `vega_col` is the strategy's own net vega per unit standard notional, EXCLUDING the vega-hedge
+    leg; at age 1 that is the leg's inception vega (from day 2 the daily vega hedge takes it to ~0,
+    so inception is the only meaningful normaliser). Only archetypes in `legs` are scaled; packages
+    such as a vega-neutral risk reversal have inception vega ~0 by construction and are left
+    untouched — combinations are built from scaled legs, never from scaled packages. Leg trades with
+    zero or missing inception vega are dropped and counted in `attrs`.
     """
     if vega_col not in td.columns:
         raise ValueError("to_vega_units needs a per-day vega column; see configs/archetypes.yaml for notional units otherwise")
-    v0 = td[td["age"] == 1].set_index("trade_id")[vega_col].abs()
-    out = td.merge(v0.rename("_v0"), left_on="trade_id", right_index=True, how="left")
+    is_leg = td["archetype"].isin(legs)
+    legs_td, rest = td[is_leg], td[~is_leg]
+    v0 = legs_td[legs_td["age"] == 1].set_index("trade_id")[vega_col].abs()
+    out = legs_td.merge(v0.rename("_v0"), left_on="trade_id", right_index=True, how="left")
     bad = out["_v0"].isna() | (out["_v0"] == 0)
+    dropped = int(out.loc[bad, "trade_id"].nunique())
     out = out[~bad].copy()
     for c in ["pnl"] + [c for c in COMPONENTS if c in out.columns]:
         out[c] = out[c] / out["_v0"]
-    out.attrs["dropped_trades_no_inception_vega"] = int(td.loc[bad.values, "trade_id"].nunique()) if bad.any() else 0
-    return out.drop(columns="_v0")
+    res = pd.concat([out.drop(columns="_v0"), rest]).sort_values(["pair", "archetype", "trade_id", "age"]).reset_index(drop=True)
+    res.attrs["dropped_trades_no_inception_vega"] = dropped
+    res.attrs["scaled_archetypes"] = sorted(out["archetype"].unique())
+    res.attrs["unscaled_archetypes"] = sorted(rest["archetype"].unique())
+    return res
 
 
 def combine(td: pd.DataFrame, weights: dict, name: str) -> pd.DataFrame:

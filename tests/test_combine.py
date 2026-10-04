@@ -20,6 +20,15 @@ def test_vega_units_rescale_by_inception_vega(legs):
     assert tdv.attrs["dropped_trades_no_inception_vega"] == 0
 
 
+def test_packages_are_never_scaled(legs):
+    m, td, _ = legs
+    pkg = schema.coerce(synth.simulate_trades(m, archetypes=("rr_25d",), seed=7))
+    pkg["vega"] = 1e-9  # a vega-neutral package: inception vega ~0
+    both = combine.to_vega_units(pd.concat([td, pkg]))
+    assert both.attrs["unscaled_archetypes"] == ["rr_25d"]
+    assert np.allclose(both[both.archetype == "rr_25d"]["pnl"].values, pkg["pnl"].values)
+
+
 def test_combination_is_exact_aggregation(legs):
     _, _, tdv = legs
     rr = combine.combine(tdv, combine.STANDARD_COMBOS["rr_25d"], "rr_25d")

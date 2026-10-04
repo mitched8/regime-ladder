@@ -18,7 +18,7 @@ Produce a frame matching `regime_ladder/schema.py` from whatever the backtest re
 | `age` | derived: trading-day count from entry, starting at 1 | `checks.py` enforces consecutiveness |
 | `pnl` | sum of the source's P&L components | cash per unit standard notional |
 | `pnl_trade`, `pnl_delta_hedge`, `pnl_vega_hedge` | source components if available | `checks.py` verifies they sum to `pnl` |
-| `vega` | per-day vega of the live position per unit standard notional | needed for vega-unit scaling (`combine.to_vega_units`); without it, legs stay in notional units |
+| `vega` | the strategy's own net vega per unit standard notional, **excluding the vega-hedge leg** | at age 1 this is the leg's inception vega, which is all `combine.to_vega_units` uses; only base legs are scaled, packages never are |
 | `gamma_cash`, `vanna`, `volga` | source Greeks if available | needed for the age-dependence diagnostics, not for the ladder |
 
 Pattern:
@@ -47,6 +47,12 @@ For the state profile (WU-06b) the same frame also carries the other G10 pairs' 
 (`g10_1 … g10_6`, same side versus the dollar) and the cross-asset series named in
 `configs/profile.yaml` under the generic names used there (`eq, eq2, rate2y, rate10y, oil, gold,
 dxy, credit, vix, move`); map source tickers to those names in `configs/local.yaml`.
+
+Reconciliation of packages (WU-03): where the source also runs RR and fly as packages, compare the
+package's daily P&L with `combine(legs)` under the standard weights, per entry date and age. The
+correlation should be ~1 and the ratio a stable scalar (the package's notional convention). A drift
+in the ratio or a correlation well below one means the package is hedged as a package rather than
+leg by leg, and the combination path should then be preferred for consistency.
 
 Cross-check: the trade-day table carries the marks the backtester used at the strategy tenor.
 Join on (pair, date) and tabulate differences against the market adapter's values. Non-zero
