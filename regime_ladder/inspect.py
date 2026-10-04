@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from . import discover, features, labels, ladder, leading, profile, schema, shock, tags, transitions
+from . import discover, evaluate, features, gates, labels, ladder, leading, profile, schema, shock, tags, transitions
 
 FILES = []  # (filename, produced by, what it is) — filled as dump runs, written to README.md
 
@@ -32,7 +32,7 @@ def _w(out: Path, name: str, obj, by: str, what: str, **kw):
 
 
 def dump(market: pd.DataFrame, cfg: dict, pcfg: dict, lcfg: dict, gates_cfg: dict, pair: str, out: str | Path,
-         td: pd.DataFrame | None = None, target: pd.Series | None = None, events=None) -> dict:
+         td: pd.DataFrame | None = None, target: pd.Series | None = None, events=None, target_name: str | None = None) -> dict:
     out = Path(out); out.mkdir(parents=True, exist_ok=True); FILES.clear()
     c = cfg["labeller"]
 
@@ -46,7 +46,7 @@ def dump(market: pd.DataFrame, cfg: dict, pcfg: dict, lcfg: dict, gates_cfg: dic
         target = market["rv_1m"].shift(-21)
         tname = "forward 21d realised vol (no trade table given)"
     else:
-        tname = "forward 5d archetype P&L from the trade table"
+        tname = target_name or "forward 5d archetype P&L from the trade table"
     lvl = market[c.get("level_target", "atm_1m")].shift(-int(c.get("level_horizon", 5)))
     cal = labels.calibrate_states(comp, target.reindex(comp.index), level_target=lvl, min_episodes=c["min_episodes"], max_switches_per_year=c["max_switches_per_year"])
     _w(out, "finder_report.csv", cal["report"].drop(columns=["episodes"]), "labels.calibrate_states(...)['report']",
@@ -100,6 +100,8 @@ def dump(market: pd.DataFrame, cfg: dict, pcfg: dict, lcfg: dict, gates_cfg: dic
     _w(out, "leading_features.csv", L, "leading.build(market, names, events, **params)", "every leading feature per day (0..100); stored_energy = gap_pct × complacency / 100")
     gcfg = gates_cfg["phase4_leading"]
     scr = leading.screen(L, lab, comp, target.reindex(comp.index), gcfg)
+    lagged = leading.screen(L, lab, comp, target.reindex(comp.index), gcfg, lag=int(lc.get("lag_check", 1)))
+    scr["delta_r2_lagged"] = scr["feature"].map(lagged.set_index("feature")["delta_r2"])
     _w(out, "leading_screen.csv", scr, "leading.screen(L, labels, composite, target, gates['phase4_leading'])", "one row per candidate: both retention tests, folds, β, retain", index=False)
     cz = (comp - comp.mean()) / comp.std()
     fits = []
@@ -115,6 +117,10 @@ def dump(market: pd.DataFrame, cfg: dict, pcfg: dict, lcfg: dict, gates_cfg: dic
     use = {k: 1.0 for k in kept} or {col: 1.0 for col in L.columns}
     psi = leading.pressure(L, use)
     _w(out, "pressure.csv", psi, "leading.pressure(L, weights)", f"pressure index from {'the retained features ' + str(kept) if kept else 'ALL candidates (none retained — illustrative only)'}")
+    pg = None
+    if kept:
+        pg = leading.pressure_gain(psi, lab, comp, prior_strength=lcfg["transitions"]["prior_strength"])
+    _w(out, "gate_phase4.json", gates.gate_phase4(scr, pg, gates_cfg), "gates.gate_phase4(screen, oos_gain(pressure).attrs)", "Gate 4: retained features and the pressure index's OOS transition gain")
     fit = transitions.fit_tilt(lab, psi, P, k=5, base=cz)
     _w(out, "tilt_pressure.json", {k: v for k, v in fit.items()}, "transitions.fit_tilt(labels, pressure, P, k=5, base=composite_z)", "β and γ for the pressure index on the whole history, with log-likelihoods")
     today = lab.iloc[-1]; H = lcfg["transitions"]["horizon"]
@@ -130,6 +136,14 @@ def dump(market: pd.DataFrame, cfg: dict, pcfg: dict, lcfg: dict, gates_cfg: dic
         lad = ladder.shrink(ladder.ladder(cum, frame, alpha=cfg["alpha"], ci=cfg["ci"], n_boot=cfg.get("n_boot", 1000)), kappa=cfg["kappa"])
         _w(out, "ladder.csv", lad, "ladder.ladder(cum, labels) -> ladder.shrink", "the entry-conditional ladder, every group × state × h", index=False)
         _w(out, "increments.csv", ladder.increments(lad), "ladder.increments(lad)", "earn per day between consecutive horizons", index=False)
+        g2 = gates.gate_phase2(lad, gates_cfg); g2["cells"] = {"|".join(map(str, k)): v for k, v in g2["cells"].items()}
+        _w(out, "gate_phase2.json", g2, "gates.gate_phase2(lad)", "Gate 2: separation between states at h <= max_h")
+        wf = evaluate.walk_forward(cum, n_splits=cfg["eval"]["n_splits"], kappa=cfg["eval"].get("kappa", 0.0))
+        _w(out, "walk_forward.csv", wf, "evaluate.walk_forward(cum)", "out-of-sample state ladder vs unconditional, per group and h", index=False)
+        _w(out, "gate_phase3.json", gates.gate_phase3(wf, gates_cfg), "gates.gate_phase3(walk_forward)", "Gate 3: out-of-sample improvement, rank IC, calibration slope")
+    _w(out, "meta.json", {"pair": pair, "first_date": str(market.index[0].date()), "last_date": str(market.index[-1].date()), "days": len(market),
+                          "finder_target": tname, "leading_target": tname, "trade_table": td is not None, "today_state": lab.iloc[-1]},
+       "inspect.dump", "what this dump was run on")
     # README
     lines = ["# Inspection dump", "", f"Pair {pair}. Every file is one derived quantity, produced by the function named; call it on the same market frame to reproduce it in a notebook.", "",
              "| file | produced by | what it is |", "|---|---|---|"] + [f"| `{n}` | `{b}` | {w} |" for n, b, w in FILES]

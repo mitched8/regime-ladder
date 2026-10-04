@@ -94,3 +94,11 @@ from the untracked adapter, and nothing in the tracked repo names them.
 | shrinkage κ, block length | config (`kappa`), 2h; D7 says how κ is to be chosen on real data | `configs/default.yaml` |
 | which leading features enter the pressure index | the retention rule (both tests, most folds) | `leading_screen.csv` |
 | tag thresholds, event calendar, intervention config | declared by the desk | `configs/default.yaml › tags`, `configs/local.yaml` |
+
+## Handing a component to a reviewer without the code
+
+`python -m regime_ladder pack --stage {data,states,ladder,leading} --src out/inspect [--market ...] [--td ...]`
+turns an `inspect` folder into one markdown packet (definitions, dated runs, compact tables, gate
+results, and for leading features an alignment check against future realised vol). Paste it into a
+separate model session with `templates/CHALLENGER_PROMPT.md`. Leading features need only the market
+frame and labels: run `labels`, `inspect --market ...` and `pack --stage leading`, no backtester.

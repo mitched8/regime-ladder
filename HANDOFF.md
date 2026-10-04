@@ -6,21 +6,31 @@ Updated at the end of every session. The next session starts by reading this fil
 WU-00 — Localise — status: todo
 
 ## Done (this session)
-- Scaffold extended through Phase 4: six states + extreme band with a step-fit finder, tags, shock detection, time-varying transitions, leading features / stored energy, Gate 4, CLI commands, docs and the framework page. All on synthetic data.
+- `pack` command (`regime_ladder/pack.py`): one review packet per stage (data, states, ladder, leading) for a reviewer without the code; `inspect` now also writes gates 2/3/4, walk-forward and `meta.json`.
+- `templates/CHALLENGER_PROMPT.md`: results challenger with stage checklists, plus the prompt writer.
+- `docs/calibration/`: packets on three synthetic worlds (genuine desk series, useless one, planted timestamp bug) with an answer key.
+- Fix: Gate 4's pressure test now uses the same footing as the screen (k-step likelihood, composite baseline); before, a genuinely leading series could pass the screen and fail the gate.
+- Fix: CUSUM recorded its statistic after the reset, so the alarm day showed zero pressure and the shock score dropped exactly when the detector fired. Found by the challenger dry runs.
+- Fix: `shock.lead_profile` ranked states in display order (stressed→normalising counted as an escalation); now by stress rank. `docs/shock.html` regenerated.
+- `PLAN.md › Route`: market side and trade side in parallel, joined at Gate 2; deferrals listed.
 
 ## Next (exact next step, one line if possible)
-- WU-00: pull, `pytest -q`, `python -m regime_ladder demo`, write `docs/ENVIRONMENT.md`.
+- WU-00: pull, `pytest -q`, `python -m regime_ladder demo`, paste `templates/INSTRUCTIONS_ADDENDUM.md` into the repo instruction file, calibrate the challenger on `docs/calibration/`, write `docs/ENVIRONMENT.md`. Send CR-2 the same day.
 
 ## Uncertain (questions for the owner; blocking items reference DECISIONS.md)
 - D17 (which pairs get an intervention-risk tag and with what thresholds), D20 (which desk series to screen as leading features) — both can wait until Phase 4.
 
 ## Parked (ideas that are not the current unit)
+- Labels during the features' warm-up default to carry (first ~6 months of the market frame). Harmless while the trade table starts years later; blanking them needs NaN-safe tags/episodes. The states packet prints the warm-up date.
+- Pressure index centring: `leading.pressure` centres every retained feature at 50, but `stored_energy` (a product of percentiles / 100) sits around 20–25; if it is ever retained, re-percentile it before it enters the pressure index. Decide at WU-17.
+- CUSUM raises 0–1 alarms in ten synthetic years (surprises there never shift in variance): check the false-alarm budget (D18) on real data at WU-14.
+- Power: with noisy forward P&L, ten years of one pair did not retain even the true synthetic pressure series. Expect Gate 4 to be conservative; pooling pairs or the realised-minus-implied target (D21) are the levers.
 - Shock blend into the state probability vector is a heuristic until the §14 calibration test exists.
 - Phase 5 path model: regime-conditional surface-move bootstrap through a repricer; consistency test against the ladder first.
 
 ## Last test run
 ```
-95 passed in 73.95s
+102 passed (pytest -q, ~2 min)
 ```
 
 ## Data as-of

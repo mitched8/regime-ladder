@@ -1,5 +1,7 @@
 # PLAN — work units through the Phase 3 go/no-go and the Phase 4 leading-feature gate
 
+The phases below are the dependency order; the **Route** section is the order to work in.
+
 Conventions: one work unit (WU) is one agent session, two at most. Each WU names the only files
 the builder reads, produces named outputs, and is done when its acceptance test passes and
 `HANDOFF.md` is updated. A separate reviewer session (see `templates/REVIEWER_PROMPT.md`) passes
@@ -10,13 +12,44 @@ discovery, point-in-time machinery, statistics, anything failed twice in review.
 
 Status legend: `todo` · `doing` · `review` · `done` · `blocked (see HANDOFF)`
 
+## Route: two tracks, joined at Gate 2
+
+Everything on the market side (states, transitions, shocks, leading features) needs only the market
+frame, so it runs on the full surface history (10y+) without waiting for the backtester. The trade
+side needs the backtester API and runs alongside. They join when the finder is rerun on forward P&L.
+
+| step | track A — market side | track B — trade side |
+|---|---|---|
+| 1 | WU-00 localise (both tracks) · send CR-2 (backfill extension) on day one | |
+| 2 | WU-06 market adapter, one pair, full history | WU-01 trade-day adapter (hardest unit: per-day vega, components, cut times) |
+| 3 | WU-07 `inspect` on the real frame | WU-02 vertical slice |
+| 4 | WU-08 states, finder on the forward-surface fallback target · **packet: states** | WU-03 legs and packages · WU-04 golden trades · **packet: data** |
+| 5 | WU-15 constant matrix and fan (comes from `inspect`) | |
+| 6 | WU-14 shocks · WU-16 leading screen (realised-minus-implied target) · **packet: leading** | |
+| join | WU-08 rerun with `--td` (finder on forward P&L) → WU-09 → **Gate 2** · **packet: states, ladder** | |
+| then | WU-10, WU-11 → **Gate 3** · **packet: ladder** | WU-16/17 rerun on forward P&L → **Gate 4** · **packet: leading** |
+
+**Deferred** until the stage they serve shows signal: WU-06b (cross-asset frame; only profiles and
+sub-states need it), WU-08d (tags), WU-05 (second pair; add once the first is clean), WU-12 and
+WU-13 (age-dependence and robustness; only if Gate 3 is promising).
+
+## Review loop
+
+After each bold **packet** step: `python -m regime_ladder inspect ...` then
+`python -m regime_ladder pack --stage <stage> --src out/inspect [--market ...] [--td ...]`. The packet
+(`out/packets/<stage>/packet.md`) goes to a separate model session with
+`templates/CHALLENGER_PROMPT.md`; its REQUESTS go into `HANDOFF.md › next`. The same separate model
+drafts each builder prompt (prompt writer, same file), so coding-agent sessions spend their budget on
+execution. Calibrate the challenger once on `docs/calibration/` before the first real packet. Code
+review (`templates/REVIEWER_PROMPT.md`) still covers the diff; the challenger covers the results.
+
 ---
 
 ## Phase 0 — Localise
 
 | WU | Goal | Reads | Produces | Acceptance | Model | Status |
 |---|---|---|---|---|---|---|
-| 00 | Pull, run, inventory | README, this card | `pytest` and `python -m regime_ladder demo` green locally; `docs/ENVIRONMENT.md` (untracked) listing available APIs, packages, paths, existing retrieval plumbing and feature sub-components | both commands succeed; inventory reviewed by owner | routine | todo |
+| 00 | Pull, run, inventory | README, this card | `pytest` and `python -m regime_ladder demo` green locally; repo instruction file updated from `templates/INSTRUCTIONS_ADDENDUM.md`; the challenger calibrated on `docs/calibration/`; `docs/ENVIRONMENT.md` (untracked) listing available APIs, packages, paths, existing retrieval plumbing and feature sub-components | both commands succeed; inventory reviewed by owner | routine | todo |
 
 ## Phase 1 — Data, trade definition, integrity
 
@@ -41,7 +74,7 @@ Status legend: `todo` · `doing` · `review` · `done` · `blocked (see HANDOFF)
 | WU | Goal | Reads | Produces | Acceptance | Model | Status |
 |---|---|---|---|---|---|---|
 | 07 | Features on real data | `features.py`, `docs/COMPONENTS.md`, WU-06 adapter | `python -m regime_ladder inspect` run on the real frame (every derived input as a file, in `out/inspect/<pair>/`); plots and descriptive stats per feature per pair; existing feature sub-components wrapped as functions with `asof` and added to `FEATURES` | all registered features pass `test_pit_truncation`; no feature uses a centred or full-sample statistic; owner has looked at `features.csv`, `composite.csv` and `finder_report.csv` | routine | todo |
-| 08 | Labeller calibration | `labels.py`, `configs/default.yaml` | composite + EWMA; `calibrate_states` **inside walk-forward training windows**: level bounds step-fitted on forward ATM (whole history), extreme bound as tail quantile, partition 3 / 6 / 6x and hysteresis chosen on forward P&L under the switch budget; label history per pair; durations, transition matrix, episodes; extreme merged or kept by the episode rule | label history saved with fold boundaries logged; durations vs geometric reported; episodes per state ≥ 5 or flagged; D11 closed | judgement | todo |
+| 08 | Labeller calibration | `labels.py`, `configs/default.yaml` | composite + EWMA; `calibrate_states` **inside walk-forward training windows**: level bounds step-fitted on forward ATM (whole history), extreme bound as tail quantile, partition 3 / 6 / 6x and hysteresis chosen on forward P&L under the switch budget; label history per pair; durations, transition matrix, episodes; extreme merged or kept by the episode rule | label history saved with fold boundaries logged; durations vs geometric reported; episodes per state ≥ 5 or flagged; states packet passed by the challenger; D11 closed (first pass on the forward-surface target; rerun on forward P&L at the join) | judgement | todo |
 | 08d | Tags | `tags.py`, `configs/default.yaml › tags` | corr-sign, pinned, event-window (calendar from the adapter) and, for the configured pairs, intervention-risk tags on the real frame; episode counts per (state, tag) cell; which cells split | all tags pass the truncation test; cell table saved; intervention thresholds per pair recorded in `configs/local.yaml` | routine | todo |
 | 09 | Separation report | `ladder.py`, `gates.py` | ladder at h ≤ 10 with real labels; `out/gate_phase2.json`; plots | gate evaluated and written; sign stability across sub-periods tabulated | routine | todo |
 
@@ -67,7 +100,7 @@ labels the market actually produced and a baseline that already knows the contin
 |---|---|---|---|---|---|---|
 | 14 | Shock detectors on real data | `shock.py`, `configs/leading.yaml › shock` | surprise, CUSUM (h calibrated on the first year, ARL per config), BOCD, HAR forecast, shock score per pair in `out/shock/`; lead profile against the labels; alarm dates listed next to the label-switch dates | all four series pass the truncation test on the real frame; `lead_profile` shows `before_up` above `all` or the detector is flagged as coincident, not leading | routine | todo |
 | 15 | Constant matrix and fan | `transitions.py`, `configs/leading.yaml › transitions` | per pair: matrix with sticky prior, implied vs observed durations, the 21-day fan from today's state; `python -m regime_ladder transitions` | duration ratios within 0.6–1.5 or the first-order approximation is flagged for that state | routine | todo |
-| 16 | Leading-feature screen | `leading.py`, `configs/leading.yaml › leading`, WU-06/06b frames | the six generic candidates plus any desk series the owner supplies (flow, dealer gamma, barrier book — wrapped as `asof` functions and registered), each screened one at a time: `out/leading/leading_screen.csv` with both tests, the lagged check, and the retain flag; event calendar filled per pair | every candidate passes the truncation test; screen table reviewed; no candidate added to the pressure index that fails either test | judgement | todo |
+| 16 | Leading-feature screen | `leading.py`, `configs/leading.yaml › leading`, WU-06/06b frames | the six generic candidates plus any desk series the owner supplies (flow, dealer gamma, barrier book — wrapped as `asof` functions and registered), each screened one at a time: `out/leading/leading_screen.csv` with both tests, the lagged check, and the retain flag; event calendar filled per pair | every candidate passes the truncation test; leading packet passed by the challenger (alignment check clean for every desk series); no candidate added to the pressure index that fails either test | judgement | todo |
 | 17 | Pressure index and Gate 4 | WU-16 outputs, `gates.py` | pressure from the retained features; tilt β per pair; fan with and without the tilt under the declared covariate paths; `out/gate_phase4.json`; the card's leading line | gate evaluated and written; covariate path policy per feature recorded in D19 | routine | todo |
 
 **Gate 4 (owner, 30 min): leading information has incremental value.** Pass → the pressure index enters the card and the Phase 5 path model. Fail → the constant matrix stands and the card says so; do not loosen `gates.yaml`.

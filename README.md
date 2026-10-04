@@ -14,7 +14,7 @@ detection (surprise, CUSUM, BOCD), time-varying transitions (a multinomial-logit
 k-step likelihood) and leading features built on the stored-energy hypothesis, each retained only
 where it adds out-of-sample value beyond the state.
 
-It is deliberately small (about 3,479 lines including tests), has no dependency on any particular
+It is deliberately small (about 4,100 lines including tests), has no dependency on any particular
 data source, and is validated on synthetic data with analytic ground truth before any real data is
 touched — including a synthetic world in which stored energy is causal and one in which it is not.
 Site-specific adapters are written locally and never committed.
@@ -23,12 +23,13 @@ Site-specific adapters are written locally and never committed.
 
 ```
 pip install -e ".[test]"
-pytest -q                          # 95 tests, ~75 s
+pytest -q                          # ~100 tests, ~2 min
 python -m regime_ladder demo       # end to end on synthetic data; writes out/demo/card.md
 python -m regime_ladder demo --energy-beta 3    # the world where stored energy drives escalations
 python -m regime_ladder validate   # intervals recover the analytic truth across seeds
 python -m regime_ladder shock|transitions|leading ...   # the Phase 4 pieces on saved frames
 python -m regime_ladder inspect --market market.parquet [--td trade_days.parquet]   # every derived input, one file each, with a README
+python -m regime_ladder pack --stage leading --src out/inspect --market market.parquet   # one review packet for a reviewer without the code
 ```
 
 ## Read
@@ -42,14 +43,16 @@ python -m regime_ladder inspect --market market.parquet [--td trade_days.parquet
 | `docs/COMPONENTS.md` | how to compute and look at any single component — features, finder, matrix, tags, profiles, shocks, leading features, stored energy — on its own, in a notebook, without the backtester |
 | `docs/framework.html` | the complete framework for a human reader — data, features, six states and the state finder, tags, profiles, sub-state discovery, shock detection, transition probabilities, leading features and stored energy, the ladder, the path model, validation and gates — with synthetic screenshots and two interactive demos; open in a browser |
 | `docs/states.html` · `transitions.html` · `leading.html` · `profiles.html` · `shock.html` · `ladder.html` | six deep dives, one per component, each with its own figures and live panels that run the same code in the browser; regenerated from `docs/src/build_*.py` (point `docs/src/common.py › world()` at a real frame to rebuild them on real data) |
-| `templates/` | standing rules for the coding agent, builder and reviewer prompts, handoff and decisions templates |
+| `templates/` | standing rules for the coding agent, builder and reviewer prompts, the results challenger and prompt writer (`CHALLENGER_PROMPT.md`), handoff and decisions templates |
+| `docs/calibration/` | review packets on synthetic worlds with a known answer (a genuine desk series, a useless one, one with a planted timestamp bug) to test the challenger before it sees real results |
 | `configs/gates.yaml` | pre-registered pass/fail thresholds; owner-only |
 
 ## Working method
 
 Plan outside, execute inside. A coding agent builds one work unit per session from `SPEC.md` and
-the unit's card; a separate reviewer session that cannot run code passes or fails it; the owner
-reviews only at gates. `HANDOFF.md` carries state between sessions; `DECISIONS.md` carries the
+the unit's card; a separate reviewer session that cannot run code passes or fails the diff, and a
+challenger session reads the stage's review packet (`pack`) and returns findings and requests; the
+owner reviews only at gates. `PLAN.md › Route` runs the market side and the trade side in parallel. `HANDOFF.md` carries state between sessions; `DECISIONS.md` carries the
 choices only the owner makes.
 
 ## Status

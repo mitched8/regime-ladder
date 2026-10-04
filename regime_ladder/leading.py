@@ -215,6 +215,15 @@ def incremental_value(feature: pd.Series, labels: pd.Series, state_score: pd.Ser
             "beta_mean": float(tg["beta"].mean()), "gamma_mean": float(tg["gamma"].mean()), "folds": folds, "k": k}
 
 
+def pressure_gain(psi: pd.Series, labels: pd.Series, state_score: pd.Series, folds: int = 4, k: int = 5, prior_strength: float = 10.0) -> dict:
+    """Gate 4's second test, on the same footing as the screen's transition test: the standardised pressure
+    index as the tilt covariate, the standardised state score as the baseline already in the tilt, k-step
+    likelihood. Without the baseline the pressure is confounded with distance to the state boundary."""
+    z = (psi - psi.mean()) / psi.std()
+    cz = (state_score - state_score.mean()) / state_score.std()
+    return oos_gain(labels, z, folds=folds, k=k, base=cz, prior_strength=prior_strength).attrs
+
+
 def retain(res: dict, cfg: dict) -> bool:
     """Gate 4 rule: both tests positive, in most folds."""
     if not res or not res.get("n") or "delta_r2" not in res:

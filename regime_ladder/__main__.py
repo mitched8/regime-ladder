@@ -1,4 +1,6 @@
-"""CLI.  python -m regime_ladder {synth,check,labels,ladder,evaluate,validate,shock,transitions,leading,inspect,demo} ...
+"""CLI.  python -m regime_ladder {synth,check,labels,ladder,evaluate,validate,shock,transitions,leading,inspect,pack,demo} ...
+
+`pack` turns an `inspect` folder (or the trade table) into one markdown review packet per stage for a reviewer without the code.
 
 `inspect` writes every derived input — features, composite, finder table, labels, matrix, tags, characteristics,
 profiles, discovery, shocks, leading features, tilt fits, pressure, fans — one file each, with a README naming
@@ -16,7 +18,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from . import checks, discover, evaluate, features, gates, inspect as inspect_, labels, ladder, leading, profile, report, schema, shock, synth, tags, transitions
+from . import checks, discover, evaluate, features, gates, inspect as inspect_, labels, ladder, leading, pack, profile, report, schema, shock, synth, tags, transitions
 
 
 def _cfg(path):
@@ -194,9 +196,8 @@ def cmd_leading(a):
     if kept:
         psi = leading.pressure(L, lcfg.get("pressure_weights") or {k: 1.0 for k in kept})
         psi.to_csv(out / "pressure.csv")
-        g = transitions.oos_gain(lab, psi, folds=4, prior_strength=lcfg_all["transitions"]["prior_strength"])
-        pg = g.attrs
-        print(f"pressure index from {kept}: OOS transition gain {g.attrs['total_gain_per_transition']:+.4f} in {g.attrs['folds_positive']}/4 folds")
+        pg = leading.pressure_gain(psi, lab, comp, prior_strength=lcfg_all["transitions"]["prior_strength"])
+        print(f"pressure index from {kept}: OOS transition gain {pg['total_gain_per_transition']:+.4f} in {pg['folds_positive']}/4 folds")
     g4 = gates.gate_phase4(sc, pg, gc); gates.write_result(g4, out / "gate_phase4.json")
     print("phase4 (leading) gate:", g4["pass"], "· retained:", kept or "none")
 
@@ -210,6 +211,22 @@ def cmd_inspect(a):
     res = inspect_.dump(m, cfg, pcfg, lcfg, gc, a.pair, a.out, td=td, target=target)
     print(f"{len(res['files'])} files in {a.out} · today {res['today']} · spec {res['spec']['partition']} bounds {tuple(round(b) for b in res['spec']['bounds'])} · retained leading {res['retained'] or 'none'}")
     print((Path(a.out) / "README.md").read_text())
+
+
+def cmd_pack(a):
+    """One self-describing markdown review packet per stage (templates/CHALLENGER_PROMPT.md is written against it)."""
+    td = schema.coerce(pd.read_parquet(a.td)) if a.td else None
+    m = None
+    if a.market:
+        m = pd.read_parquet(a.market) if a.market.endswith(".parquet") else pd.read_csv(a.market, index_col=0, parse_dates=True)
+    if a.stage == "data" and td is None:
+        raise SystemExit("--stage data needs --td")
+    if a.stage != "data" and not a.src:
+        raise SystemExit(f"--stage {a.stage} needs --src (an inspect folder)")
+    cfgs = [a.config, a.gates, a.leading_config, a.profile_config, "configs/archetypes.yaml"]
+    p = pack.build(a.stage, Path(a.out) / a.stage, src=a.src, td=td, market=m, label=a.label, config_paths=cfgs,
+                   archetypes_cfg=pack.load_yaml("configs/archetypes.yaml"))
+    print(f"wrote {p} ({len(p.read_text().splitlines())} lines, {p.stat().st_size / 1024:.0f} KB)")
 
 
 def cmd_demo(a):
@@ -299,6 +316,8 @@ def main(argv=None):
     t = sp.add_parser("transitions"); t.add_argument("--labels", required=True); t.add_argument("--pressure"); t.add_argument("--out", default="out/transitions"); t.set_defaults(f=cmd_transitions)
     g = sp.add_parser("leading"); g.add_argument("--market", required=True); g.add_argument("--labels", required=True); g.add_argument("--td"); g.add_argument("--out", default="out/leading"); g.set_defaults(f=cmd_leading)
     i = sp.add_parser("inspect"); i.add_argument("--market", required=True); i.add_argument("--td"); i.add_argument("--pair", default="EURUSD"); i.add_argument("--out", default="out/inspect"); i.set_defaults(f=cmd_inspect)
+    q = sp.add_parser("pack"); q.add_argument("--stage", required=True, choices=["data", "states", "ladder", "leading"]); q.add_argument("--src", help="folder written by inspect")
+    q.add_argument("--td"); q.add_argument("--market"); q.add_argument("--label", default=""); q.add_argument("--out", default="out/packets"); q.set_defaults(f=cmd_pack)
     m = sp.add_parser("demo"); m.add_argument("--out", default="out/demo"); m.add_argument("--days", type=int, default=2520); m.add_argument("--seed", type=int, default=0); m.add_argument("--energy-beta", type=float, default=0.0, dest="energy_beta"); m.set_defaults(f=cmd_demo)
     a = p.parse_args(argv); a.f(a)
 

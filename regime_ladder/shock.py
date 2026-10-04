@@ -115,11 +115,11 @@ def cusum(x2: pd.Series, k: float, h: float, null_window: int = 252, reset: bool
             S[t] = s
             continue
         s = max(0.0, s + xv[t] - mv[t] - k)
+        S[t] = s                      # recorded before any reset, so the alarm day shows S > h (pressure 1)
         if s > h:
             alarm[t] = True
             if reset:
                 s = 0.0
-        S[t] = s
     return pd.DataFrame({"S": S, "alarm": alarm, "mu0": mu0.values}, index=x2.index)
 
 
@@ -242,11 +242,12 @@ def blend_pi(pi: pd.Series, score: float, w_max: float = 0.5, escalation: dict =
     return out / out.sum()
 
 
-def lead_profile(score: pd.Series, labels: pd.Series, before: int = 5, rank=ALL_STATES) -> pd.DataFrame:
+def lead_profile(score: pd.Series, labels: pd.Series, before: int = 5, rank: dict | None = None) -> pd.DataFrame:
     """Does the score rise before escalations? Mean score on the `before` days preceding each move to a
     higher-ranked state, versus before moves down and versus all days. A detector that is merely
     coincident shows nothing here; one with lead shows the 'up' row above 'all'."""
-    order = {s: i for i, s in enumerate(rank)}
+    from .transitions import RANK   # stress rank (carry < settling < rising < agitated < normalising < stressed < extreme), not display order
+    order = rank or RANK
     lv = labels.map(order)
     chg = lv.diff()
     rows = {"all": score.mean()}
