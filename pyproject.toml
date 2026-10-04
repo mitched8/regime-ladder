@@ -5,6 +5,9 @@ description = "Multi-horizon, entry-conditional trade statistics for option arch
 requires-python = ">=3.10"
 dependencies = ["pandas>=2.0", "numpy>=1.24", "scipy>=1.10", "pyyaml>=6", "matplotlib>=3.7", "pyarrow>=12"]
 
+[tool.setuptools.package-data]
+regime_ladder = ["view_template.html"]
+
 [project.optional-dependencies]
 test = ["pytest>=7"]
 

@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root{--ink:#1a1d23;--muted:#5f6670;--rule:#d9dce1;--bg:#f6f7f9;--ind:#4F46E5;--pos:#2EAE7A;--neg:#E8743B}
+*{box-sizing:border-box}
+html,body{margin:0;background:#fff;color:var(--ink);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px;line-height:1.5}
+header{padding:14px 20px 8px;border-bottom:1px solid var(--rule);display:flex;flex-wrap:wrap;gap:6px 22px;align-items:baseline}
+header h1{font-size:17px;margin:0;font-weight:600}
+header .dim{color:var(--muted);font-size:12.5px}
+nav{display:flex;gap:2px;padding:6px 20px 0;border-bottom:1px solid var(--rule);flex-wrap:wrap}
+nav button{border:0;background:none;padding:8px 12px;font:inherit;font-size:13.5px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}
+nav button.on{color:var(--ink);border-bottom-color:var(--ind);font-weight:600}
+#filters{padding:8px 20px;background:var(--bg);border-bottom:1px solid var(--rule);display:flex;flex-wrap:wrap;gap:6px 26px;font-size:12.5px}
+#filters:empty{display:none}
+.frow{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.frow .lbl{color:var(--muted);text-transform:uppercase;letter-spacing:.8px;font-size:10.5px;margin-right:3px}
+.chip{border:1px solid var(--rule);background:#fff;border-radius:12px;padding:1px 9px;font:inherit;font-size:12.5px;cursor:pointer;color:var(--muted)}
+.chip.on{border-color:var(--ink);color:var(--ink);background:#fff}
+.chip.on.st{color:#fff;border-color:transparent}
+.mini{font-size:11px;color:var(--muted);cursor:pointer;text-decoration:underline;margin-left:2px}
+main{padding:14px 20px 40px;max-width:1500px}
+.ctl{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;margin:0 0 12px;font-size:13px}
+.ctl label{color:var(--muted)} .ctl select,.ctl input{font:inherit;font-size:13px;padding:2px 4px;border:1px solid var(--rule);border-radius:3px;background:#fff}
+.ctl .tog{cursor:pointer;user-select:none} .ctl .tog input{margin-right:4px;vertical-align:-1px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:14px 22px}
+.grid.one{grid-template-columns:minmax(0,820px)}
+.panel{border:1px solid var(--rule);border-radius:4px;padding:8px 10px 4px;background:#fff}
+.panel h3{font-size:13px;margin:0 0 4px;font-weight:600}
+svg{width:100%;height:auto;display:block;overflow:visible}
+svg text{font-family:Inter,system-ui,sans-serif;font-size:11px;fill:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;margin:8px 0 14px;color:var(--muted)}
+.legend span.sw{display:inline-block;width:22px;height:0;border-top:2.5px solid;vertical-align:middle;margin-right:5px}
+.note{color:var(--muted);font-size:12.5px;margin:6px 0 14px}
+h2{font-size:15px;margin:22px 0 6px;font-weight:600}
+h2:first-child{margin-top:4px}
+table{border-collapse:collapse;font-size:12.5px;margin:6px 0 14px}
+th{text-align:left;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);padding:5px 8px;border-bottom:1px solid var(--ink);vertical-align:bottom;white-space:nowrap;cursor:pointer}
+td{padding:4px 8px;border-bottom:1px solid var(--rule);vertical-align:top;white-space:nowrap}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.hi td{background:#eef7f1} tr.dimr td{color:var(--muted)}
+.hm td{text-align:right;font-variant-numeric:tabular-nums;min-width:66px;cursor:pointer}
+.hm td.thin{opacity:.45} .hm td.today{outline:2px solid var(--ink);outline-offset:-2px} .hm th.today{color:var(--ink)}
+.hm td.rowh{text-align:left;cursor:default;font-weight:500}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.card{border:1px solid var(--rule);border-radius:4px;padding:10px 14px;background:var(--bg)} .card h3{margin:0 0 6px;font-size:14px}
+.card dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:0;font-size:12.5px} .card dt{color:var(--muted)} .card dd{margin:0}
+.badge{display:inline-block;padding:0 8px;border-radius:10px;color:#fff;font-size:12px;font-weight:600}
+.pass{color:var(--pos);font-weight:600} .fail{color:var(--neg);font-weight:600}
+.empty{color:var(--muted);padding:30px 0;font-size:13.5px}
+@media (max-width:700px){header,nav,#filters,main{padding-left:16px;padding-right:16px}.grid{grid-template-columns:1fr}.grid.one{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><h1 id="title"></h1><span class="dim" id="sub"></span></header>
+<nav id="nav"></nav>
+<div id="filters"></div>
+<main id="main"></main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+'use strict';
+const D = JSON.parse(document.getElementById('data').textContent);
+const ORDER = ['ALL','carry','settling','rising','agitated','normalising','stressed','extreme'];
+const COL = {carry:'#3B6FD4',rising:'#2EAE7A',agitated:'#D4A017',stressed:'#E8743B',extreme:'#B91C1C',normalising:'#8B5CF6',settling:'#0EA5E9',ALL:'#6B7280'};
+const PAL = ['#4F46E5','#E8743B','#2EAE7A','#D4A017','#0EA5E9','#8B5CF6','#B91C1C','#6B7280','#1a1d23','#F472B6'];
+const DASH = ['', '7 4', '2 3', '9 3 2 3', '14 4', '4 2 1 2'];
+const LAB = {pair:'pair', archetype:'strategy', tenor_days:'tenor', regime:'entry state', h:'horizon'};
+const LADDER_METRICS = [['mean_shrunk','EV, shrunk'],['mean','EV'],['p_profit','P(profit)'],['q50','median'],['q05','5th pct'],['q95','95th pct'],['es05','ES 5%'],['se','standard error'],['n_eff','n_eff'],['episodes','episodes'],['earn_per_day','earn per day (increments)']];
+const WF_METRICS = [['improvement','MSE improvement vs unconditional'],['rank_ic','rank IC'],['calib_slope','calibration slope'],['n_test','n_test']];
+const TABS = [['overview','Overview'],['ladder','Ladder'],['matrix','Matrix'],['oos','Out of sample'],['states','States'],['transitions','Transitions'],['shock','Shock'],['leading','Leading']];
+
+const HAS_LADDER = D.ladder && D.ladder.length > 0;
+const cmp = k => (a, b) => k === 'regime' ? ORDER.indexOf(a) - ORDER.indexOf(b) : (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b)));
+const uniq = (rows, k) => [...new Set(rows.map(r => r[k]))].filter(v => v !== null && v !== undefined).sort(cmp(k));
+const fmt = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v)) ? '·' : (typeof v !== 'number' ? String(v) : (Math.abs(v) >= 1000 ? v.toFixed(0) : v.toFixed(d)));
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const sum = a => a.reduce((x, y) => x + y, 0);
+
+const U = {
+  tab: 'overview', pair: D.pairs[0], sort: {},
+  f: {pair: new Set([D.pairs[0]]),
+      archetype: new Set(HAS_LADDER ? uniq(D.ladder, 'archetype') : []),
+      tenor_days: new Set(HAS_LADDER ? [uniq(D.ladder, 'tenor_days')[0]] : []),
+      regime: new Set(HAS_LADDER ? uniq(D.ladder, 'regime').filter(r => r !== 'extreme') : [])},
+  lad: {x: 'h', lines: 'regime', panels: 'archetype', metric: 'mean_shrunk', vsAll: false, ci: false, hAt: 5},
+  mat: {h: 5, metric: 'mean_shrunk', rows: {pair: true, archetype: true, tenor_days: true}, vsAll: false},
+  wf: {lines: 'archetype', panels: 'pair', metric: 'improvement'},
+  ts: {years: 'all'}, lead: {feats: null},
+};
+
+/* ---------- generic drawing ---------- */
+function niceTicks(lo, hi, n = 5) {
+  if (!(hi > lo)) { hi = lo + 1; lo = lo - 1; }
+  const raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), r = raw / p;
+  const step = (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * p;
+  const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10)); return out;
+}
+/* series: [{label, colour, dash, pts:[{xi, y, lo, hi, tip, hollow}]}]; opt: {xcats, W, H, zero, ylabel, pct, bands, xticks, hlines, marks} */
+function svgLines(series, opt) {
+  const W = opt.W || 560, H = opt.H || 300, m = {l: 50, r: 12, t: 12, b: 30}, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const n = opt.xcats ? opt.xcats.length : opt.n, xs = i => m.l + (i + 0.5) * iw / n, xe = i => m.l + i * iw / n;
+  let lo = Infinity, hi = -Infinity;
+  for (const s of series) for (const p of s.pts) for (const v of [p.y, p.lo, p.hi]) if (v !== null && v !== undefined && !Number.isNaN(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  if (opt.pct) { lo = 0; hi = 100; } if (opt.unit) { lo = Math.min(lo, 0); hi = Math.max(hi, 1); }
+  if (opt.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  if (!isFinite(lo)) { lo = 0; hi = 1; } if (hi === lo) { hi += 1; lo -= 1; }
+  const pad = (hi - lo) * 0.06; if (!opt.pct && !opt.unit) { lo -= pad; hi += pad; }
+  const ys = v => m.t + ih - (v - lo) / (hi - lo) * ih;
+  let g = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+  if (opt.bands) for (const b of opt.bands) g += `<rect x="${xe(b.i0).toFixed(1)}" y="${m.t}" width="${(xe(b.i1 + 1) - xe(b.i0)).toFixed(1)}" height="${ih}" fill="${COL[b.state] || '#ccc'}" opacity="0.13"/>`;
+  for (const t of niceTicks(lo, hi)) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${ys(t).toFixed(1)}" y2="${ys(t).toFixed(1)}" stroke="${t === 0 ? '#555' : '#e6e8ec'}" stroke-width="${t === 0 ? 1 : 0.8}"/><text x="${m.l - 6}" y="${(ys(t) + 3.5).toFixed(1)}" text-anchor="end">${fmt(t, Math.abs(t) < 1 && t !== 0 ? 2 : (Math.abs(t) < 10 ? 1 : 0))}</text>`;
+  if (opt.hlines) for (const l of opt.hlines) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${ys(l.y).toFixed(1)}" y2="${ys(l.y).toFixed(1)}" stroke="${l.colour || '#999'}" stroke-dasharray="4 3"/><text x="${W - m.r - 2}" y="${(ys(l.y) - 3).toFixed(1)}" text-anchor="end">${esc(l.label || '')}</text>`;
+  const xt = opt.xticks || (opt.xcats || []).map((c, i) => ({i, label: c}));
+  for (const t of xt) g += `<text x="${xs(t.i).toFixed(1)}" y="${H - m.b + 15}" text-anchor="middle">${esc(t.label)}</text>${opt.xticks ? `<line x1="${xs(t.i).toFixed(1)}" x2="${xs(t.i).toFixed(1)}" y1="${m.t + ih}" y2="${m.t + ih + 4}" stroke="#999"/>` : ''}`;
+  if (opt.xlabel) g += `<text x="${m.l + iw / 2}" y="${H - 2}" text-anchor="middle">${esc(opt.xlabel)}</text>`;
+  if (opt.ylabel) g += `<text transform="translate(11 ${m.t + ih / 2}) rotate(-90)" text-anchor="middle">${esc(opt.ylabel)}</text>`;
+  for (const s of series) {
+    const has = p => p.y !== null && p.y !== undefined && !Number.isNaN(p.y);
+    if (s.pts.some(p => p.lo !== undefined && p.lo !== null)) {
+      const up = s.pts.filter(p => has(p) && p.hi !== null).map(p => `${xs(p.xi).toFixed(1)},${ys(p.hi).toFixed(1)}`);
+      const dn = s.pts.filter(p => has(p) && p.lo !== null).map(p => `${xs(p.xi).toFixed(1)},${ys(p.lo).toFixed(1)}`).reverse();
+      if (up.length > 1) g += `<polygon points="${up.concat(dn).join(' ')}" fill="${s.colour}" opacity="0.12"/>`;
+    }
+    let d = '', pen = false;
+    for (const p of s.pts) { if (!has(p)) { pen = false; continue; } d += `${pen ? 'L' : 'M'}${xs(p.xi).toFixed(1)} ${ys(p.y).toFixed(1)}`; pen = true; }
+    g += `<path d="${d}" fill="none" stroke="${s.colour}" stroke-width="${s.width || 1.8}" ${s.dash ? `stroke-dasharray="${s.dash}"` : ''} stroke-linejoin="round"/>`;
+    if (!opt.nodots) for (const p of s.pts) if (has(p)) g += `<circle cx="${xs(p.xi).toFixed(1)}" cy="${ys(p.y).toFixed(1)}" r="3.4" fill="${p.hollow ? '#fff' : s.colour}" stroke="${s.colour}" stroke-width="1.6"><title>${esc(p.tip || '')}</title></circle>`;
+  }
+  if (opt.marks) for (const k of opt.marks) g += `<path d="M${xs(k.i).toFixed(1)} ${m.t + 2} l-4 -8 l8 0 z" fill="${k.colour || '#B91C1C'}"><title>${esc(k.tip || '')}</title></path>`;
+  return g + '</svg>';
+}
+function legendHTML(items) { return `<div class="legend">${items.map(i => `<span><span class="sw" style="border-color:${i.colour};border-top-style:${i.dash ? (i.dash.startsWith('2') ? 'dotted' : 'dashed') : 'solid'}"></span>${esc(i.label)}</span>`).join('')}</div>`; }
+
+function tableHTML(id, rows, cols, opt = {}) {
+  const s = U.sort[id];
+  if (s) rows = [...rows].sort((a, b) => { const x = a[s.k], y = b[s.k]; const c = (x === null || x === undefined) ? 1 : (y === null || y === undefined) ? -1 : cmp(s.k)(x, y); return s.d ? -c : c; });
+  let h = `<table data-t="${id}"><thead><tr>${cols.map(c => `<th class="${c.num ? 'num' : ''}" data-k="${c.k}">${esc(c.label || c.k)}${s && s.k === c.k ? (s.d ? ' ▾' : ' ▴') : ''}</th>`).join('')}</tr></thead><tbody>`;
+  for (const r of rows) h += `<tr class="${opt.rowClass ? opt.rowClass(r) : ''}">${cols.map(c => `<td class="${c.num ? 'num' : ''}" ${c.style ? `style="${c.style(r[c.k], r)}"` : ''}>${c.f ? c.f(r[c.k], r) : (c.num ? fmt(r[c.k], c.d === undefined ? 2 : c.d) : esc(r[c.k] === null || r[c.k] === undefined ? '·' : r[c.k]))}</td>`).join('')}</tr>`;
+  return h + '</tbody></table>';
+}
+function divCol(v, vmax) { if (v === null || v === undefined || !vmax) return ''; const a = Math.min(0.75, Math.abs(v) / vmax * 0.75); return `background:${v >= 0 ? `rgba(46,174,122,${a.toFixed(2)})` : `rgba(232,116,59,${a.toFixed(2)})`}`; }
+
+/* ---------- pivot over ladder-shaped tables ---------- */
+function filtered(rows, dims) { return rows.filter(r => dims.every(d => !U.f[d] || U.f[d].has(r[d]))); }
+function pivot(rows, dims, o) {
+  const x = o.x || 'h';
+  let base = rows;
+  if (o.metric === 'earn_per_day') base = D.increments.map(r => Object.assign({}, r, {h: r.h_to, to_expiry: false}));
+  let allMap = null;
+  if (o.vsAll) { allMap = new Map(); for (const r of base) if (r.regime === 'ALL') allMap.set([r.pair, r.archetype, r.tenor_days, r.h].join('|'), r); }
+  let rs = filtered(base, dims); if (o.vsAll) rs = rs.filter(r => r.regime !== 'ALL');
+  if (x === 'tenor_days') rs = rs.filter(r => o.hAt === 'exp' ? r.to_expiry : (r.h === o.hAt && !r.to_expiry));
+  const val = r => { const v = r[o.metric]; if (v === null || v === undefined) return null; if (!allMap) return v; const a = allMap.get([r.pair, r.archetype, r.tenor_days, r.h].join('|')); return a && a[o.metric] !== null ? v - a[o.metric] : null; };
+  const shift = r => { if (!allMap) return 0; const a = allMap.get([r.pair, r.archetype, r.tenor_days, r.h].join('|')); return a ? a[o.metric] : 0; };
+  const {panelsDim, linesDim, others} = resolve(dims, o);
+  const xcats = uniq(rs, x);
+  const panels = panelsDim ? uniq(rs, panelsDim).map(v => ({title: `${LAB[panelsDim]} ${v}`, rows: rs.filter(r => r[panelsDim] === v)})) : [{title: '', rows: rs}];
+  const lineVals = linesDim ? uniq(rs, linesDim) : [''];
+  const comboKey = r => others.map(d => r[d]).join(' · ');
+  const combos = [...new Set(rs.map(comboKey))].sort();
+  const ci = o.ci && (o.metric === 'mean' || o.metric === 'mean_shrunk');
+  const out = panels.map(p => {
+    const series = [];
+    for (const lv of lineVals) for (const cb of combos) {
+      const pr = p.rows.filter(r => (!linesDim || r[linesDim] === lv) && comboKey(r) === cb).sort((a, b) => a[x] - b[x]);
+      if (!pr.length) continue;
+      const colour = linesDim === 'regime' ? (COL[lv] || '#999') : PAL[lineVals.indexOf(lv) % PAL.length];
+      series.push({label: [lv, cb].filter(Boolean).join(' · '), colour, dash: DASH[combos.indexOf(cb) % DASH.length],
+        pts: pr.map(r => ({xi: xcats.indexOf(r[x]), y: val(r), lo: ci && r.ci_lo !== null ? r.ci_lo - shift(r) : undefined, hi: ci && r.ci_hi !== null ? r.ci_hi - shift(r) : undefined, hollow: !!r.to_expiry,
+          tip: `${r.pair} ${r.archetype} ${r.tenor_days}d · ${r.regime ? r.regime + ' entry · ' : ''}h=${r.h}${r.to_expiry ? ' (expiry)' : ''}\n${o.metric}: ${fmt(val(r), 3)}${r.n_eff !== undefined ? `\nn_eff ${fmt(r.n_eff, 0)} · episodes ${fmt(r.episodes, 0)}` : ''}${r.ci_lo !== undefined && r.ci_lo !== null ? `\nCI [${fmt(r.ci_lo)}, ${fmt(r.ci_hi)}]` : ''}`}))});
+    }
+    return {title: p.title, series};
+  });
+  const legend = [];
+  if (linesDim) for (const lv of lineVals) legend.push({label: `${lv}`, colour: linesDim === 'regime' ? (COL[lv] || '#999') : PAL[lineVals.indexOf(lv) % PAL.length]});
+  if (combos.length > 1) for (const cb of combos) legend.push({label: cb, colour: '#555', dash: DASH[combos.indexOf(cb) % DASH.length]});
+  return {panels: out, xcats: xcats.map(c => x === 'h' ? String(c) : `${c}d`), legend, linesDim, others, combos: combos.length, n: rs.length};
+}
+function pivotHTML(pv, o, ylabel) {
+  if (!pv.n) return '<div class="empty">Nothing matches the filters.</div>';
+  const one = pv.panels.length === 1;
+  let h = `<div class="grid ${one ? 'one' : ''}">`;
+  for (const p of pv.panels) h += `<div class="panel">${p.title ? `<h3>${esc(p.title)}</h3>` : ''}${svgLines(p.series, {xcats: pv.xcats, W: one ? 820 : 560, H: one ? 360 : 290, zero: true, xlabel: o.x === 'h' ? 'horizon (trading days; hollow = to expiry)' : `tenor (at h=${o.hAt})`, ylabel})}</div>`;
+  h += '</div>' + legendHTML(pv.legend);
+  if (pv.combos > 1) h += `<div class="note">Colour = ${LAB[pv.linesDim]}; dash pattern = ${pv.others.map(d => LAB[d]).join(' · ')}. Narrow the filters to one value of those to compare on colour alone.</div>`;
+  return h;
+}
+
+/* pin: when the comparison axes change, leave one value in every other dimension so colour means one thing */
+function resolve(dims, o) {
+  const x = o.x || 'h', panelsDim = o.panels !== 'none' && o.panels !== x ? o.panels : null;
+  let linesDim = o.lines; if (linesDim === x || linesDim === panelsDim) linesDim = dims.find(d => d !== x && d !== panelsDim) || null;
+  return {x, panelsDim, linesDim, others: dims.filter(d => d !== x && d !== panelsDim && d !== linesDim)};
+}
+function pin(dims, o, src) {
+  const r = resolve(dims, o); o.lines = r.linesDim || o.lines;
+  for (const d of r.others) if (U.f[d].size > 1) {
+    const have = uniq(src, d).filter(v => U.f[d].has(v));
+    U.f[d] = new Set([d === 'regime' && have.includes('ALL') ? 'ALL' : have[0]]);
+  }
+}
+/* ---------- filter bar ---------- */
+function filterBar() {
+  const box = document.getElementById('filters'); box.innerHTML = '';
+  if (!['ladder', 'matrix', 'oos'].includes(U.tab) || !HAS_LADDER) return;
+  const dims = U.tab === 'oos' ? ['pair', 'archetype', 'tenor_days'] : ['pair', 'archetype', 'tenor_days', 'regime'];
+  const src = U.tab === 'oos' ? D.walk_forward : D.ladder;
+  for (const d of dims) {
+    const vals = uniq(src, d); if (!vals.length) continue;
+    const row = document.createElement('div'); row.className = 'frow';
+    row.innerHTML = `<span class="lbl">${LAB[d]}</span>` + vals.map(v => `<button class="chip ${U.f[d].has(v) ? 'on' : ''} ${d === 'regime' ? 'st' : ''}" data-d="${d}" data-v="${esc(v)}" ${d === 'regime' && U.f[d].has(v) ? `style="background:${COL[v] || '#999'}"` : ''}>${d === 'tenor_days' ? v + 'd' : esc(v)}</button>`).join('') + `<span class="mini" data-all="${d}">all</span><span class="mini" data-none="${d}">none</span>`;
+    box.appendChild(row);
+  }
+  box.onclick = e => {
+    const t = e.target; const vals = d => uniq(src, d);
+    if (t.dataset.d) { const d = t.dataset.d; const v = d === 'tenor_days' ? +t.dataset.v : t.dataset.v; if (e.shiftKey) U.f[d] = new Set([v]); else if (U.f[d].has(v)) U.f[d].delete(v); else U.f[d].add(v); render(); }
+    else if (t.dataset.all) { U.f[t.dataset.all] = new Set(vals(t.dataset.all)); render(); }
+    else if (t.dataset.none) { U.f[t.dataset.none] = new Set(); render(); }
+  };
+}
+const sel = (name, opts, cur, extra = '') => `<select data-s="${name}" ${extra}>${opts.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(cur) ? 'selected' : ''}>${esc(l === undefined ? v : l)}</option>`).join('')}</select>`;
+const tog = (name, cur, label) => `<label class="tog"><input type="checkbox" data-c="${name}" ${cur ? 'checked' : ''}>${label}</label>`;
+const pairSel = () => `<label>pair ${sel('pair', D.pairs.map(p => [p, p]), U.pair)}</label>`;
+
+/* ---------- tabs ---------- */
+function tabOverview() {
+  let h = '<div class="cards">';
+  for (const p of D.pairs) {
+    const t = D.tables[p], s = t.spec || {}, g = t.gates || {}, scr = (t.screen || []).filter(r => r.retain === true || r.retain === 'True');
+    h += `<div class="card"><h3>${esc(p)} <span class="badge" style="background:${COL[t.today.state] || '#999'}">${esc(t.today.state)}</span></h3><dl>
+      <dt>as of</dt><dd>${esc(t.today.date)}</dd>
+      <dt>history</dt><dd>${esc(t.meta.first_date || D.series[p].dates[0])} → ${esc(t.meta.last_date || t.today.date)} (${D.series[p].dates.length} days)</dd>
+      <dt>states</dt><dd>partition ${esc(s.partition || '·')} · bounds ${(s.bounds || []).map(b => fmt(b, 0)).join(' / ')} · half-life ${fmt(s.halflife, 0)}d · hysteresis ${fmt(s.delta, 1)}</dd>
+      <dt>switches / yr</dt><dd>${fmt(s.switches_per_year, 1)} · OOS R² ${fmt(s.oos_r2, 3)} on ${esc(t.meta.finder_target || '·')}</dd>
+      <dt>extreme</dt><dd>${s.extreme_merged === 'True' || s.extreme_merged === true ? 'merged into stressed' : 'kept'} (${fmt(s.extreme_episodes, 0)} episodes)</dd>
+      <dt>gate 2</dt><dd>${gateTxt(g.phase2)}</dd><dt>gate 3</dt><dd>${gateTxt(g.phase3)}</dd><dt>gate 4</dt><dd>${gateTxt(g.phase4)}</dd>
+      <dt>retained leading</dt><dd>${scr.length ? scr.map(r => esc(r.feature)).join(', ') : 'none'}</dd></dl></div>`;
+  }
+  h += '</div>';
+  if (HAS_LADDER) {
+    const L = D.ladder.filter(r => r.regime !== 'ALL');
+    h += `<h2>What is in the ladder</h2><div class="note">${uniq(D.ladder, 'pair').length} pairs · ${uniq(D.ladder, 'archetype').length} strategies (${uniq(D.ladder, 'archetype').join(', ')}) · tenors ${uniq(D.ladder, 'tenor_days').map(t => t + 'd').join(', ')} · horizons ${uniq(D.ladder, 'h').join(', ')} · ${L.length} state cells, ${L.filter(r => r.episodes < 5 || r.n_eff < 30).length} of them thin (fewer than 5 episodes or n_eff below 30).</div>`;
+    h += `<h2>Strongest cells at h=5, EV shrunk (|EV| ranked, thin cells excluded)</h2>`;
+    const top = L.filter(r => r.h === 5 && !r.to_expiry && r.episodes >= 5 && r.n_eff >= 30 && r.mean_shrunk !== null).sort((a, b) => Math.abs(b.mean_shrunk) - Math.abs(a.mean_shrunk)).slice(0, 12);
+    h += tableHTML('top', top, [{k: 'pair'}, {k: 'archetype', label: 'strategy'}, {k: 'tenor_days', label: 'tenor', num: true, d: 0}, {k: 'regime', label: 'entry state', f: v => `<span class="badge" style="background:${COL[v]}">${esc(v)}</span>`}, {k: 'mean_shrunk', label: 'EV shrunk', num: true}, {k: 'mean', label: 'EV', num: true}, {k: 'ci_lo', num: true}, {k: 'ci_hi', num: true}, {k: 'p_profit', label: 'P(profit)', num: true}, {k: 'n_eff', num: true, d: 0}, {k: 'episodes', num: true, d: 0}]);
+  } else h += '<div class="empty">No ladder in this dump: inspect was run without --td. The States, Transitions, Shock and Leading tabs still work.</div>';
+  h += `<div class="note">Units: cash per unit of standard notional. Sources: ${D.sources.map(esc).join(', ')} · generated ${esc(D.generated)}.</div>`;
+  return h;
+}
+function gateTxt(g) { if (!g) return '<span class="dim">not run</span>'; const keys = Object.keys(g).filter(k => k !== 'pass' && k !== 'cells' && k !== 'retained' && typeof g[k] !== 'object'); return `<span class="${g.pass ? 'pass' : 'fail'}">${g.pass ? 'pass' : 'fail'}</span> <span class="dim">${keys.map(k => `${k} ${fmt(g[k], 3)}`).join(' · ')}</span>`; }
+
+function tabLadder() {
+  if (!HAS_LADDER) return '<div class="empty">No ladder in this dump (inspect was run without --td).</div>';
+  const o = U.lad, dims = ['pair', 'archetype', 'tenor_days', 'regime'];
+  const dimOpts = dims.map(d => [d, LAB[d]]);
+  const hs = uniq(D.ladder.filter(r => !r.to_expiry), 'h').map(v => [v, 'h=' + v]).concat([['exp', 'to expiry']]);
+  let h = `<div class="ctl"><label>x axis ${sel('lad.x', [['h', 'horizon'], ['tenor_days', 'tenor']], o.x)}</label>${o.x === 'tenor_days' ? `<label>at ${sel('lad.hAt', hs, o.hAt)}</label>` : ''}
+    <label>lines ${sel('lad.lines', dimOpts, o.lines)}</label><label>panels ${sel('lad.panels', [['none', 'none']].concat(dimOpts), o.panels)}</label>
+    <label>metric ${sel('lad.metric', LADDER_METRICS, o.metric)}</label>${tog('lad.vsAll', o.vsAll, 'minus unconditional (ALL)')}${tog('lad.ci', o.ci, 'interval band')}</div>`;
+  const pv = pivot(D.ladder, dims, o);
+  h += pivotHTML(pv, o, (o.vsAll ? 'Δ vs ALL · ' : '') + (LADDER_METRICS.find(m => m[0] === o.metric) || [])[1]);
+  h += `<div class="note">Entry-conditional: each point is the cumulative P&L at horizon h of fresh entries made in that state, averaged over entries (shrunk toward ALL by n_eff where the metric says shrunk). The interval band is the unshrunk interval from the ladder file. Shift-click a filter chip to solo it. Hover a point for n_eff, episodes and the interval.</div>`;
+  return h;
+}
+
+function tabMatrix() {
+  if (!HAS_LADDER) return '<div class="empty">No ladder in this dump (inspect was run without --td).</div>';
+  const o = U.mat, dims = ['pair', 'archetype', 'tenor_days'];
+  const hs = uniq(D.ladder.filter(r => !r.to_expiry), 'h').map(v => [v, 'h=' + v]).concat([['exp', 'to expiry']]);
+  let h = `<div class="ctl"><label>horizon ${sel('mat.h', hs, o.h)}</label><label>metric ${sel('mat.metric', LADDER_METRICS.filter(m => m[0] !== 'earn_per_day'), o.metric)}</label>
+    <span>rows:</span>${dims.map(d => tog('mat.rows.' + d, o.rows[d], LAB[d])).join('')}${tog('mat.vsAll', o.vsAll, 'minus unconditional (ALL)')}</div>`;
+  const rowDims = dims.filter(d => o.rows[d]); if (!rowDims.length) return h + '<div class="empty">Pick at least one row dimension.</div>';
+  let rs = filtered(D.ladder, dims).filter(r => o.h === 'exp' ? r.to_expiry : (String(r.h) === String(o.h) && !r.to_expiry));
+  const states = ORDER.filter(s => rs.some(r => r.regime === s) && (s === 'ALL' || U.f.regime.has(s)));
+  const rowKey = r => rowDims.map(d => r[d]).join('|');
+  const rows = [...new Map(rs.map(r => [rowKey(r), r])).values()].sort((a, b) => { for (const d of rowDims) { const c = cmp(d)(a[d], b[d]); if (c) return c; } return 0; });
+  if (!rows.length) return h + '<div class="empty">Nothing matches the filters.</div>';
+  const cell = new Map(rs.map(r => [rowKey(r) + '|' + r.regime, r]));
+  const v = (r, s) => { const c = cell.get(rowKey(r) + '|' + s); if (!c || c[o.metric] === null) return null; if (!o.vsAll || s === 'ALL') return c[o.metric]; const a = cell.get(rowKey(r) + '|ALL'); return a ? c[o.metric] - a[o.metric] : null; };
+  let vmax = 0; for (const r of rows) for (const s of states) if (s !== 'ALL' || !o.vsAll) { const x = v(r, s); if (x !== null) vmax = Math.max(vmax, Math.abs(x)); }
+  h += `<table class="hm"><thead><tr>${rowDims.map(d => `<th>${LAB[d]}</th>`).join('')}${states.map(s => `<th class="num" style="color:${COL[s]}">${s}</th>`).join('')}</tr></thead><tbody>`;
+  for (const r of rows) {
+    const today = D.tables[r.pair] ? D.tables[r.pair].today.state : null;
+    h += `<tr>${rowDims.map(d => `<td class="rowh">${d === 'tenor_days' ? r[d] + 'd' : esc(r[d])}</td>`).join('')}`;
+    for (const s of states) {
+      const c = cell.get(rowKey(r) + '|' + s), x = v(r, s), thin = c && (c.episodes < 5 || c.n_eff < 30);
+      h += `<td class="${thin ? 'thin' : ''} ${s === today ? 'today' : ''}" style="${s === 'ALL' && o.vsAll ? '' : divCol(x, vmax)}" data-p="${esc(r.pair)}" data-a="${esc(r.archetype)}" data-t="${r.tenor_days}" title="${c ? esc(`${r.pair} ${r.archetype} ${r.tenor_days}d · ${s} · h=${c.h}\n${o.metric} ${fmt(c[o.metric], 3)} · CI [${fmt(c.ci_lo)}, ${fmt(c.ci_hi)}]\nn_eff ${fmt(c.n_eff, 0)} · episodes ${fmt(c.episodes, 0)}${thin ? '\nthin cell' : ''}\nclick → ladder for this row`) : ''}">${x === null ? '·' : fmt(x, 2)}${thin ? '†' : ''}</td>`;
+    }
+    h += '</tr>';
+  }
+  h += '</tbody></table>';
+  h += `<div class="note">Green positive, orange negative, shade by |value| within the table. † thin cell (fewer than 5 episodes or n_eff below 30). The outlined cell in each pair's rows is that pair's state today. Click a cell to open the ladder for that row.</div>`;
+  return h;
+}
+
+function tabOOS() {
+  if (!D.walk_forward || !D.walk_forward.length) return '<div class="empty">No walk-forward table in this dump.</div>';
+  const o = U.wf, dims = ['pair', 'archetype', 'tenor_days'], dimOpts = dims.map(d => [d, LAB[d]]);
+  let h = `<div class="ctl"><label>lines ${sel('wf.lines', dimOpts, o.lines)}</label><label>panels ${sel('wf.panels', [['none', 'none']].concat(dimOpts), o.panels)}</label><label>metric ${sel('wf.metric', WF_METRICS, o.metric)}</label></div>`;
+  const pv = pivot(D.walk_forward, dims, {x: 'h', lines: o.lines, panels: o.panels, metric: o.metric, vsAll: false, ci: false});
+  h += pivotHTML(pv, {x: 'h'}, (WF_METRICS.find(m => m[0] === o.metric) || [])[1]);
+  const gs = D.pairs.map(p => ({pair: p, g: (D.tables[p].gates || {}).phase3})).filter(x => x.g);
+  if (gs.length) h += `<h2>Gate 3</h2>` + tableHTML('g3', gs.map(x => Object.assign({pair: x.pair}, x.g, {calib_lo: (x.g.calib_slope_range || [])[0], calib_hi: (x.g.calib_slope_range || [])[1]})), [{k: 'pair'}, {k: 'pass', f: v => `<span class="${v ? 'pass' : 'fail'}">${v ? 'pass' : 'fail'}</span>`}, {k: 'improvement_min', num: true, d: 3}, {k: 'rank_ic_min', num: true, d: 3}, {k: 'calib_lo', label: 'calib slope min', num: true}, {k: 'calib_hi', label: 'calib slope max', num: true}]);
+  h += `<div class="note">Walk-forward: the state ladder fitted on earlier entries, scored on later ones, against the unconditional mean. Improvement is the MSE reduction; rank IC the Spearman correlation of predicted and realised across states; calibration slope the regression of realised on predicted (1 = calibrated). A line above zero at h ≤ 10 is what Gate 3 asks for.</div>`;
+  return h;
+}
+
+/* ---------- time-series tabs ---------- */
+function range(pair) {
+  const d = D.series[pair].dates, n = d.length; const y = U.ts.years;
+  const i0 = y === 'all' ? 0 : Math.max(0, n - Math.round(252 * +y));
+  return {i0, i1: n - 1};
+}
+function bands(pair, rg) {
+  const reg = D.series[pair].regime, out = []; let s = null, st = null;
+  for (let i = rg.i0; i <= rg.i1; i++) { const r = reg[i]; if (r !== st) { if (st !== null) out.push({i0: s - rg.i0, i1: i - 1 - rg.i0, state: st}); s = i; st = r; } }
+  if (st !== null) out.push({i0: s - rg.i0, i1: rg.i1 - rg.i0, state: st});
+  return out;
+}
+function xticks(pair, rg) {
+  const d = D.series[pair].dates, out = []; let y = '';
+  for (let i = rg.i0; i <= rg.i1; i++) { const yy = d[i].slice(0, 4); if (yy !== y) { y = yy; out.push({i: i - rg.i0, label: yy}); } }
+  if (rg.i1 - rg.i0 < 600) { out.length = 0; let m = ''; for (let i = rg.i0; i <= rg.i1; i++) { const mm = d[i].slice(0, 7); if (mm !== m) { m = mm; if (+mm.slice(5) % (rg.i1 - rg.i0 < 300 ? 1 : 3) === 1) out.push({i: i - rg.i0, label: mm}); } } }
+  return out;
+}
+function tsSeries(pair, rg, specs) {
+  const S = D.series[pair];
+  return specs.filter(s => S[s.col]).map(s => ({label: s.label || s.col, colour: s.colour, dash: s.dash, width: s.width, pts: S[s.col].slice(rg.i0, rg.i1 + 1).map((v, i) => ({xi: i, y: v, tip: `${S.dates[rg.i0 + i]} · ${s.label || s.col} ${fmt(v, 3)}`}))}));
+}
+function tsPanel(title, pair, rg, specs, opt = {}) {
+  const series = tsSeries(pair, rg, specs);
+  if (!series.length) return '';
+  return `<div class="panel"><h3>${esc(title)}</h3>${svgLines(series, Object.assign({n: rg.i1 - rg.i0 + 1, W: 980, H: 240, nodots: true, bands: bands(pair, rg), xticks: xticks(pair, rg)}, opt))}${legendHTML(series.map(s => ({label: s.label, colour: s.colour, dash: s.dash})))}</div>`;
+}
+const yearsSel = () => `<label>window ${sel('ts.years', [['all', 'all'], ['5', 'last 5y'], ['3', 'last 3y'], ['1', 'last 1y']], U.ts.years)}</label>`;
+
+function tabStates() {
+  const p = U.pair, t = D.tables[p], rg = range(p), s = t.spec || {};
+  let h = `<div class="ctl">${pairSel()}${yearsSel()}</div>`;
+  h += tsPanel('Composite, smoothed, with the level bounds and the state each day', p, rg, [{col: 'composite', label: 'composite', colour: '#b9bec7', width: 1}, {col: 'smoothed', label: 'smoothed (EWMA)', colour: '#1a1d23'}], {pct: true, hlines: (s.bounds || []).map((b, i) => ({y: b, label: `bound ${i + 1}`}))});
+  h += tsPanel('Direction score (slope of the smoothed composite, standardised)', p, rg, [{col: 'direction_score', label: 'direction score', colour: '#4F46E5'}], {zero: true, hlines: [s.d_up, s.d_down].filter(v => v !== undefined).map(v => ({y: v, label: fmt(v, 2)}))});
+  h += '<div class="grid">';
+  if (t.durations) h += `<div class="panel"><h3>Durations: implied 1/(1−p) against observed mean run</h3>${tableHTML('dur', t.durations.map(r => Object.assign({}, r, {ratio: r.observed_mean_days ? r.implied_days / r.observed_mean_days : null})), [{k: 'state', f: v => `<span class="badge" style="background:${COL[v]}">${esc(v)}</span>`}, {k: 'implied_days', num: true, d: 1}, {k: 'observed_mean_days', num: true, d: 1}, {k: 'ratio', label: 'implied / observed', num: true}, {k: 'episodes', num: true, d: 0}], {rowClass: r => (r.ratio < 0.6 || r.ratio > 1.5) ? 'dimr' : ''})}<div class="note">Outside 0.6–1.5 the first-order Markov approximation is weak for that state.</div></div>`;
+  if (t.matrix) h += `<div class="panel"><h3>Daily transition matrix (sticky prior); rows = from</h3>${matrixHTML(t.matrix, t.counts)}</div>`;
+  h += '</div>';
+  const share = {}; for (const r of D.series[p].regime.slice(rg.i0, rg.i1 + 1)) share[r] = (share[r] || 0) + 1;
+  const n = rg.i1 - rg.i0 + 1;
+  h += `<h2>Share of days in the window</h2><div class="legend">${ORDER.filter(s => share[s]).map(s => `<span><span class="sw" style="border-color:${COL[s]}"></span>${s} ${(100 * share[s] / n).toFixed(0)}%</span>`).join('')}</div>`;
+  if (t.state_profile) {
+    const cols = t.state_profile.cols, dcols = cols.filter(c => c.endsWith('_d')).sort((a, b) => cmp('regime')(a.replace('_d', ''), b.replace('_d', ''))), vals = t.state_profile.values;
+    let vmax = 0; for (const row of vals) for (const c of dcols) { const x = row[cols.indexOf(c)]; if (x !== null) vmax = Math.max(vmax, Math.abs(x)); }
+    h += `<h2>State profile: standardised difference from all days, per characteristic</h2><table class="hm"><thead><tr><th>characteristic</th>${dcols.map(c => `<th class="num" style="color:${COL[c.replace('_d', '')]}">${c.replace('_d', '')}</th>`).join('')}</tr></thead><tbody>`;
+    t.state_profile.rows.forEach((name, i) => { h += `<tr><td class="rowh">${esc(name)}</td>${dcols.map(c => { const x = vals[i][cols.indexOf(c)]; return `<td style="${divCol(x, vmax)};cursor:default">${fmt(x, 2)}</td>`; }).join('')}</tr>`; });
+    h += '</tbody></table><div class="note">(state mean − all-days mean) / all-days sd. The S6 check: does each column read like its name?</div>';
+  }
+  return h;
+}
+function matrixHTML(M, C) {
+  let h = `<table class="hm"><thead><tr><th></th>${M.states.map(s => `<th class="num" style="color:${COL[s]}">${s}</th>`).join('')}</tr></thead><tbody>`;
+  M.states.forEach((s, i) => { h += `<tr><td class="rowh" style="color:${COL[s]}">${s}</td>${M.states.map((_, j) => { const v = M.P[i][j]; return `<td style="background:rgba(79,70,229,${Math.min(0.7, 0.7 * (i === j ? 0 : v / 0.15)).toFixed(2)});cursor:default" title="${C ? 'raw count-based p ' + fmt(C.P[i][j], 3) : ''}">${fmt(v, 3)}</td>`; }).join('')}</tr>`; });
+  return h + '</tbody></table><div class="note">Off-diagonal cells shaded by probability. Hover for the raw empirical value without the prior.</div>';
+}
+
+function tabTransitions() {
+  const p = U.pair, t = D.tables[p];
+  let h = `<div class="ctl">${pairSel()}</div>`;
+  if (!t.fan) return h + '<div class="empty">No fan in this dump.</div>';
+  const states = Object.keys(t.fan.constant), series = [];
+  for (const s of states) series.push({label: `${s} · constant`, colour: COL[s] || '#999', pts: t.fan.constant[s].map((v, i) => ({xi: i, y: v, tip: `h=${t.fan.h[i]} ${s} ${fmt(v, 3)} (constant)`}))});
+  if (t.fan.tilted) for (const s of states) series.push({label: `${s} · tilted`, colour: COL[s] || '#999', dash: '6 4', pts: t.fan.tilted[s].map((v, i) => ({xi: i, y: v, tip: `h=${t.fan.h[i]} ${s} ${fmt(v, 3)} (tilted)`}))});
+  h += `<div class="grid one"><div class="panel"><h3>P(state at h) from today's state (${esc(t.today.state)}), constant matrix (solid) and with the pressure tilt (dashed)</h3>${svgLines(series, {xcats: t.fan.h.map(String), W: 820, H: 380, unit: true, xlabel: 'trading days ahead', ylabel: 'probability'})}</div></div>`;
+  h += legendHTML(states.map(s => ({label: s, colour: COL[s]})).concat(t.fan.tilted ? [{label: 'constant', colour: '#555'}, {label: 'tilted', colour: '#555', dash: '6 4'}] : []));
+  if (t.tilt_fits && t.tilt_fits.length) {
+    h += `<h2>Tilt fits by fold</h2>` + tableHTML('tilt', t.tilt_fits, [{k: 'feature'}, {k: 'fold', num: true, d: 0}, {k: 'train_end'}, {k: 'beta', label: 'β (feature)', num: true, d: 3}, {k: 'gamma', label: 'γ (composite)', num: true, d: 3}, {k: 'n_test', num: true, d: 0}, {k: 'oos_gain_per_transition', label: 'OOS gain / transition', num: true, d: 4}]);
+    h += '<div class="note">β should keep its sign across folds; the composite baseline γ already knows the continuous state, so the gain is what the feature adds beyond it.</div>';
+  }
+  return h;
+}
+
+function tabShock() {
+  const p = U.pair, t = D.tables[p], rg = range(p), S = D.series[p];
+  let h = `<div class="ctl">${pairSel()}${yearsSel()}</div>`;
+  const alarms = []; if (S.cusum_pressure) for (let i = rg.i0; i <= rg.i1; i++) if (S.cusum_pressure[i] !== null && S.cusum_pressure[i] >= 0.999) alarms.push({i: i - rg.i0, tip: `${S.dates[i]} CUSUM alarm`});
+  h += tsPanel('Shock score and its parts', p, rg, [{col: 'score', label: 'shock score', colour: '#1a1d23', width: 2}, {col: 'cusum_pressure', label: 'CUSUM pressure', colour: '#E8743B'}, {col: 'bocd_p_short', label: 'BOCD P(short run)', colour: '#8B5CF6'}, {col: 'recent_abs', label: 'recent |surprise|', colour: '#0EA5E9', dash: '3 3'}], {unit: true, marks: alarms});
+  h += tsPanel('Surprise (standardised one-day move against the HAR forecast) and the forecast', p, rg, [{col: 'surprise', label: 'surprise', colour: '#4F46E5', width: 1}], {zero: true});
+  h += tsPanel('HAR realised-vol forecast', p, rg, [{col: 'har_vol_forecast', label: 'HAR forecast', colour: '#2EAE7A'}], {});
+  if (t.lead_profile) { const l = t.lead_profile; h += `<h2>Lead profile</h2>` + tableHTML('lp', [{what: 'all days', v: l.all, n: ''}, {what: 'before escalations', v: l.before_up, n: l.before_up_n}, {what: 'before de-escalations', v: l.before_down, n: l.before_down_n}], [{k: 'what'}, {k: 'v', label: 'mean shock score', num: true, d: 3}, {k: 'n', label: 'events', num: true, d: 0}]) + `<div class="note">${alarms.length} CUSUM alarms in the window (red markers). Leading means before_up above all; equal means the detector is coincident, not leading.</div>`; }
+  return h;
+}
+
+function tabLeading() {
+  const p = U.pair, t = D.tables[p], rg = range(p), S = D.series[p];
+  const g = S._groups || {}, avail = (g['leading_features.csv'] || []).concat(g['features.csv'] || []).filter(k => S[k]);
+  if (!U.lead.feats) U.lead.feats = new Set(avail.slice(0, 3));
+  let h = `<div class="ctl">${pairSel()}${yearsSel()}<span>features:</span>${avail.map(f => `<label class="tog"><input type="checkbox" data-feat="${esc(f)}" ${U.lead.feats.has(f) ? 'checked' : ''}>${esc(f)}</label>`).join('')}</div>`;
+  if (t.screen && t.screen.length) {
+    const cols = [{k: 'feature'}, {k: 'target'}, {k: 'retain', f: v => `<span class="${v === true || v === 'True' ? 'pass' : 'fail'}">${v === true || v === 'True' ? 'yes' : 'no'}</span>`}, {k: 'delta_r2', label: 'Δr²', num: true, d: 4}, {k: 'folds_r2_up', label: 'folds', num: true, d: 0}, {k: 'p_perm', num: true, d: 3}, {k: 'delta_r2_lagged', label: 'Δr² lagged', num: true, d: 4}, {k: 'delta_r2_low', label: 'Δr² low band', num: true, d: 4}, {k: 'transition_gain', label: 'trans. gain', num: true, d: 4}, {k: 'folds_transition_up', label: 'folds', num: true, d: 0}, {k: 'transition_gain_k10', label: 'k=10', num: true, d: 4}, {k: 'transition_gain_k21', label: 'k=21', num: true, d: 4}, {k: 'beta_mean', label: 'β', num: true, d: 3}, {k: 'delta_r2_holdout', label: 'Δr² hold-out', num: true, d: 4}, {k: 'transition_gain_holdout', label: 'gain hold-out', num: true, d: 4}, {k: 'n_transitions', num: true, d: 0}, {k: 'fail_reason'}].filter(c => t.screen.some(r => r[c.k] !== undefined));
+    h += `<h2>Screen</h2><div style="overflow:auto">${tableHTML('scr', t.screen, cols, {rowClass: r => (r.retain === true || r.retain === 'True') ? 'hi' : ''})}</div><div class="note">Retained rows highlighted. A feature enters the pressure index only if it passes both tests in 3 of 4 folds, the permutation p-value and the hold-out guard.</div>`;
+  }
+  const palette = ['#4F46E5', '#E8743B', '#2EAE7A', '#D4A017', '#0EA5E9', '#8B5CF6', '#B91C1C', '#1a1d23'];
+  const specs = [...U.lead.feats].filter(f => S[f]).map((f, i) => ({col: f, label: f, colour: palette[i % palette.length]}));
+  if (specs.length) h += tsPanel('Leading features (trailing percentiles, 0–100) over the states', p, rg, specs, {pct: true});
+  if (S.pressure) h += tsPanel('Pressure index (z-scored on a trailing window)', p, rg, [{col: 'pressure', label: 'pressure', colour: '#1a1d23'}], {zero: true});
+  h += '<div class="note">Read the features against the coloured state bands: a leading feature should rise before the band turns orange, not with it. Whether it does so beyond what the composite already knows is the screen, not the picture.</div>';
+  return h;
+}
+
+/* ---------- wiring ---------- */
+function setPath(path, v) { const ks = path.split('.'); let o = U; for (const k of ks.slice(0, -1)) o = o[k]; o[ks[ks.length - 1]] = v; }
+function render() {
+  document.getElementById('nav').innerHTML = TABS.map(([k, l]) => `<button class="${U.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('');
+  filterBar();
+  const main = document.getElementById('main');
+  main.innerHTML = {overview: tabOverview, ladder: tabLadder, matrix: tabMatrix, oos: tabOOS, states: tabStates, transitions: tabTransitions, shock: tabShock, leading: tabLeading}[U.tab]();
+}
+document.getElementById('nav').onclick = e => { if (e.target.dataset.tab) { U.tab = e.target.dataset.tab; render(); } };
+document.getElementById('main').addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.s) { let v = t.value; if (/^-?\d+(\.\d+)?$/.test(v) && !['pair'].includes(t.dataset.s)) v = +v; if (t.dataset.s === 'pair') U.pair = v; else setPath(t.dataset.s, v);
+    if (['lad.x', 'lad.lines', 'lad.panels'].includes(t.dataset.s)) pin(['pair', 'archetype', 'tenor_days', 'regime'], U.lad, D.ladder);
+    if (['wf.lines', 'wf.panels'].includes(t.dataset.s)) pin(['pair', 'archetype', 'tenor_days'], U.wf, D.walk_forward);
+    render(); }
+  else if (t.dataset.c) { setPath(t.dataset.c, t.checked); render(); }
+  else if (t.dataset.feat) { if (t.checked) U.lead.feats.add(t.dataset.feat); else U.lead.feats.delete(t.dataset.feat); render(); }
+});
+document.getElementById('main').addEventListener('click', e => {
+  const th = e.target.closest('th[data-k]'); const td = e.target.closest('td[data-p]');
+  if (th) { const id = th.closest('table').dataset.t, s = U.sort[id]; U.sort[id] = s && s.k === th.dataset.k ? {k: s.k, d: !s.d} : {k: th.dataset.k, d: true}; render(); }
+  else if (td) { U.f.pair = new Set([td.dataset.p]); U.f.archetype = new Set([td.dataset.a]); U.f.tenor_days = new Set([+td.dataset.t]); Object.assign(U.lad, {x: 'h', lines: 'regime', panels: 'none', metric: U.mat.metric, vsAll: U.mat.vsAll}); U.tab = 'ladder'; render(); window.scrollTo(0, 0); }
+});
+document.getElementById('title').textContent = (D.label || 'regime ladder') + ' · view';
+document.getElementById('sub').textContent = `${D.pairs.join(', ')} · generated ${D.generated}`;
+render();
+</script>
+</body>
+</html>

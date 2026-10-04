@@ -35,7 +35,9 @@ WU-13 (age-dependence and robustness; only if Gate 3 is promising).
 
 ## Review loop
 
-After each bold **packet** step: `python -m regime_ladder inspect ...` then
+After each bold **packet** step: `python -m regime_ladder inspect ...`, then
+`python -m regime_ladder view --src out/inspect` for the owner's own look (one HTML file, no server;
+pivots over pair × strategy × tenor × entry state), then
 `python -m regime_ladder pack --stage <stage> --src out/inspect [--market ...] [--td ...]`. The packet
 (`out/packets/<stage>/packet.md`) goes to a separate model session with
 `templates/CHALLENGER_PROMPT.md`; its REQUESTS go into `HANDOFF.md › next`. The same separate model

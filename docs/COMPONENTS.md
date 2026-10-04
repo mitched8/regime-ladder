@@ -103,6 +103,29 @@ results, and for leading features an alignment check against future realised vol
 separate model session with `templates/CHALLENGER_PROMPT.md`. Leading features need only the market
 frame and labels: run `labels`, `inspect --market ...` and `pack --stage leading`, no backtester.
 
+## Looking at the results without a notebook
+
+`python -m regime_ladder view --src out/inspect [--src out/inspect_usdjpy ...] --out out/view.html`
+writes one HTML file from the `inspect` output (`--src` is an inspect folder or a parent holding one
+per pair; run `inspect` once per pair). It embeds the data and draws with plain SVG, so it opens from
+a file on a locked-down machine with no server, network or library. Nothing is recomputed: every
+number on the page is in an `inspect` file.
+
+| tab | what it shows | the question it answers |
+|---|---|---|
+| Overview | today's state per pair, the chosen spec, gate results, retained leading features, the strongest clean cells at h=5 | where does the project stand |
+| Ladder | pivot over the ladder: any of pair, strategy, tenor and entry state as lines or panels, horizon or tenor on the x axis, EV / shrunk EV / P(profit) / quantiles / ES / earn per day, optionally minus the unconditional row, with the interval band | how do strategies, tenors and pairs compare conditional on the entry state |
+| Matrix | rows = pair × strategy × tenor, columns = entry states, value at a chosen horizon, thin cells marked, today's state outlined; click a cell for its ladder | what would I carry today |
+| Out of sample | walk-forward improvement, rank IC and calibration slope by horizon, same pivot | where does the regime layer beat the unconditional mean |
+| States | composite and smoothed composite over the state bands, direction score, durations, transition matrix, share of days, state profile | do the states look like their names |
+| Transitions | the fan from today's state, constant and tilted; tilt fits by fold | what does the matrix say about the next month |
+| Shock | score and its parts with CUSUM alarms over the state bands, surprise, HAR forecast, lead profile | does the fast path fire before the label moves |
+| Leading | the screen, chosen features over the state bands, the pressure index | do the leading features rise before the move |
+
+When a comparison axis changes, the other dimensions are pinned to one value (shown in the filter
+chips) so a colour means one thing; shift-click a chip to solo it, click to add. The page is for the
+owner; the challenger still reads the packet.
+
 ## Adding a feature
 
 One function, one dict entry, one config line. The function takes the market frame and `asof`, uses

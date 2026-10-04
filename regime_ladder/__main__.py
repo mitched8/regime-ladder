@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from . import checks, discover, evaluate, features, gates, inspect as inspect_, labels, ladder, leading, pack, profile, report, schema, shock, synth, tags, transitions
+from . import checks, discover, evaluate, features, gates, inspect as inspect_, labels, ladder, leading, pack, profile, report, schema, shock, synth, tags, transitions, view
 
 
 def _cfg(path):
@@ -245,6 +245,12 @@ def cmd_pack(a):
     print(f"wrote {p} ({len(p.read_text().splitlines())} lines, {p.stat().st_size / 1024:.0f} KB)")
 
 
+def cmd_view(a):
+    """One self-contained HTML page over one or more inspect folders: pivots over the ladder, one pair's series per tab."""
+    p = view.build(a.src, a.out, label=a.label)
+    print(f"wrote {p} ({p.stat().st_size / 1024:.0f} KB) · open it in a browser")
+
+
 def cmd_demo(a):
     cfg = _cfg(a.config); pcfg = _cfg(a.profile_config)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
@@ -336,6 +342,7 @@ def main(argv=None):
     i = sp.add_parser("inspect"); i.add_argument("--market", required=True); i.add_argument("--td"); i.add_argument("--pair", default="EURUSD"); i.add_argument("--out", default="out/inspect"); i.set_defaults(f=cmd_inspect)
     q = sp.add_parser("pack"); q.add_argument("--stage", required=True, choices=["data", "states", "ladder", "leading"]); q.add_argument("--src", help="folder written by inspect")
     q.add_argument("--td"); q.add_argument("--market"); q.add_argument("--label", default=""); q.add_argument("--out", default="out/packets"); q.set_defaults(f=cmd_pack)
+    w = sp.add_parser("view"); w.add_argument("--src", action="append", required=True, help="inspect folder, or a parent holding one per pair; repeatable"); w.add_argument("--out", default="out/view.html"); w.add_argument("--label", default=""); w.set_defaults(f=cmd_view)
     m = sp.add_parser("demo"); m.add_argument("--out", default="out/demo"); m.add_argument("--days", type=int, default=2520); m.add_argument("--seed", type=int, default=0); m.add_argument("--energy-beta", type=float, default=0.0, dest="energy_beta"); m.set_defaults(f=cmd_demo)
     a = p.parse_args(argv); a.f(a)
 
