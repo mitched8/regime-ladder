@@ -49,7 +49,7 @@ review (`templates/REVIEWER_PROMPT.md`) still covers the diff; the challenger co
 
 | WU | Goal | Reads | Produces | Acceptance | Model | Status |
 |---|---|---|---|---|---|---|
-| 00 | Pull, run, inventory | README, this card | `pytest` and `python -m regime_ladder demo` green locally; repo instruction file updated from `templates/INSTRUCTIONS_ADDENDUM.md`; the challenger calibrated on `docs/calibration/`; `docs/ENVIRONMENT.md` (untracked) listing available APIs, packages, paths, existing retrieval plumbing and feature sub-components | both commands succeed; inventory reviewed by owner | routine | todo |
+| 00 | Pull, run, inventory | README, this card | **Agent:** `pytest -q`, `python -m regime_ladder demo` and `python -m regime_ladder validate` green locally; `docs/ENVIRONMENT.md` (untracked) listing available APIs, packages, paths, existing retrieval plumbing and feature sub-components; `git check-ignore adapters/x configs/local.yaml docs/ENVIRONMENT.md` prints all three. **Owner (not the agent):** repo instruction file pasted from `templates/INSTRUCTIONS_ADDENDUM.md`; CR-2 sent; the challenger calibrated on `docs/calibration/` | agent part: the three commands succeed and ENVIRONMENT.md exists; owner part: inventory reviewed and the owner marks the unit done in HANDOFF | routine | todo |
 
 ## Phase 1 — Data, trade definition, integrity
 

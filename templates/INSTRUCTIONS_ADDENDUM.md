@@ -13,3 +13,5 @@
 11. Keep it small. No new abstractions, base classes, registries or frameworks. If a change needs more than about 150 lines, stop and propose a split in `HANDOFF.md`.
 12. Nothing committed to this repository names or describes the data owner's internal systems. Site-specific code lives in `adapters/` and `configs/local.yaml`, which are untracked.
 13. One commit per work unit. The commit body is the `HANDOFF.md › done` section. Tag at each gate.
+14. When a unit is marked **packet** in `PLAN.md › Route`, finish it by running `python -m regime_ladder inspect ...` then `python -m regime_ladder pack --stage <stage> --src out/inspect [--market ...] [--td ...]`, write the packet path into `HANDOFF.md › next` as "packet ready for review", and stop. The next unit starts only after the owner has pasted the reviewer's requests into `HANDOFF.md › next`.
+15. Steps marked **Owner** in a card or in `HANDOFF.md` are not yours. Do not attempt them, do not mark them done, and do not treat them as blocking your part of the unit.

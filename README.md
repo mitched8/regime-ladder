@@ -44,7 +44,7 @@ python -m regime_ladder pack --stage leading --src out/inspect --market market.p
 | `docs/COMPONENTS.md` | how to compute and look at any single component — features, finder, matrix, tags, profiles, shocks, leading features, stored energy — on its own, in a notebook, without the backtester |
 | `docs/framework.html` | the complete framework for a human reader — data, features, six states and the state finder, tags, profiles, sub-state discovery, shock detection, transition probabilities, leading features and stored energy, the ladder, the path model, validation and gates — with synthetic screenshots and two interactive demos; open in a browser |
 | `docs/states.html` · `transitions.html` · `leading.html` · `profiles.html` · `shock.html` · `ladder.html` | six deep dives, one per component, each with its own figures and live panels that run the same code in the browser; regenerated from `docs/src/build_*.py` (point `docs/src/common.py › world()` at a real frame to rebuild them on real data) |
-| `templates/` | standing rules for the coding agent, builder and reviewer prompts, the results challenger and prompt writer (`CHALLENGER_PROMPT.md`), handoff and decisions templates |
+| `templates/` | standing rules for the coding agent, the day-one prompt (`FIRST_SESSION.md`), builder and reviewer prompts, the results challenger and prompt writer (`CHALLENGER_PROMPT.md`), handoff and decisions templates |
 | `docs/calibration/` | review packets on synthetic worlds with a known answer (a genuine desk series, a useless one, one with a planted timestamp bug) to test the challenger before it sees real results |
 | `configs/gates.yaml` | pre-registered pass/fail thresholds; owner-only |
 

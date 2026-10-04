@@ -17,7 +17,8 @@ WU-00 — Localise — status: todo
 - `PLAN.md › Route`: market side and trade side in parallel, joined at Gate 2; deferrals listed.
 
 ## Next (exact next step, one line if possible)
-- WU-00: pull, `pytest -q`, `python -m regime_ladder demo`, paste `templates/INSTRUCTIONS_ADDENDUM.md` into the repo instruction file, calibrate the challenger on `docs/calibration/`, write `docs/ENVIRONMENT.md`. Send CR-2 the same day.
+- Agent: WU-00 — run `pytest -q`, `python -m regime_ladder demo`, `python -m regime_ladder validate`; write `docs/ENVIRONMENT.md` (untracked); confirm it is ignored; update this file; stop.
+- Owner (not the agent): paste `templates/INSTRUCTIONS_ADDENDUM.md` into the instruction file before the first session; send CR-2; calibrate the challenger on `docs/calibration/`; then mark WU-00 done and set Next to WU-06 / WU-01.
 
 ## Uncertain (questions for the owner; blocking items reference DECISIONS.md)
 - D17 (which pairs get an intervention-risk tag and with what thresholds), D20 (which desk series to screen as leading features) — both can wait until Phase 4.
