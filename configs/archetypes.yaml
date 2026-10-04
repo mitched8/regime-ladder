@@ -1,0 +1,20 @@
+# Archetype conventions — DOCUMENT what the source defines; do not choose here.
+# Fill in at WU-03. Units for `notional_unit` drive the per-unit P&L in the ladder (DECISIONS D1).
+straddle_atm:
+  legs: "long ATM call + long ATM put, same expiry"
+  ratio_rule: "equal notionals"
+  hedge_rule: "<as applied by the source: delta frequency, vega hedge instrument if any>"
+  notional_unit: "<e.g. per 1 unit of ATM vega at inception>"
+  currency: "<P&L currency>"
+rr_25d:
+  legs: "long 25d call, short 25d put (or the reverse), same expiry"
+  ratio_rule: "<e.g. smile-vega-neutral notional ratio at inception>"
+  hedge_rule: "<as applied by the source>"
+  notional_unit: "<e.g. per 1 unit of call notional in the vega-neutral ratio>"
+  currency: "<P&L currency>"
+fly_25d:
+  legs: "long 25d call + long 25d put, short ATM straddle (or the reverse), same expiry"
+  ratio_rule: "<e.g. vega-neutral wings vs body at inception>"
+  hedge_rule: "<as applied by the source>"
+  notional_unit: "<e.g. per 1 unit of wing notional>"
+  currency: "<P&L currency>"

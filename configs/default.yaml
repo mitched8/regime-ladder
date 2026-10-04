@@ -1,0 +1,17 @@
+# Research configuration. Change here, never in code. Record changes in DECISIONS.md.
+horizons: [1, 3, 5, 10, 20]      # to-expiry is always added
+alpha: 0.10                       # 90% intervals
+ci: boot                          # boot (circular block bootstrap, better calibrated) | hac (Newey-West, faster)
+n_boot: 1000
+kappa: 20                         # shrinkage prior strength (effective observations)
+
+labeller:
+  features: [vol_pct, term_slope_pct, rr_stress_pct]
+  halflife: 3                     # EWMA half-life in days
+  b1: 40                          # carry | transition boundary (composite percentile score)
+  b2: 72                          # transition | crisis boundary
+  delta: 3                        # hysteresis band
+  estimate_breaks: true           # re-estimate b1/b2 by regression kink on forward realised vol (inside training folds in real use)
+
+eval:
+  n_splits: 4                     # walk-forward test windows after a 40% initial training block

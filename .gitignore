@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+out/
+*.parquet
+.DS_Store
+adapters/
+configs/local.yaml
+docs/ENVIRONMENT.md
+tests/golden/

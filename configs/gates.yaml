@@ -1,0 +1,15 @@
+# Pre-registered gates. Thresholds are changed only by the research owner, with the reason
+# recorded in DECISIONS.md. The agent reads this file; it does not edit it.
+phase1:
+  golden_abs_tol: 1.0e-6          # golden trades must reproduce to this absolute tolerance (per day, per unit)
+
+phase2:
+  max_h: 10                       # separation is required at h <= 10
+  min_spread_se: 2.0              # best-minus-worst regime mean > 2 x larger SE
+  min_fraction_cells: 0.75        # ... in at least 75% of (group, h) cells
+
+phase3:
+  max_h: 10                       # go/no-go judged at h <= 10
+  min_improvement: 0.0            # out-of-sample MSE improvement over unconditional must be positive
+  min_rank_ic: 0.0                # Spearman between predicted and realised must be positive
+  calib_slope: [0.5, 1.5]         # realised-on-predicted slope within this range
