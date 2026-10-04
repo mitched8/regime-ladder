@@ -102,3 +102,33 @@ def plot_increments(inc: pd.DataFrame, group: tuple, path: str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=150)
     plt.close(fig)
+
+
+TENOR_LABELS = {5: "1W", 10: "2W", 21: "1M", 42: "2M", 63: "3M", 126: "6M", 252: "1Y"}
+
+
+def plot_tenor_curve(lad: pd.DataFrame, pair: str, archetype: str, h: int, path: str, regimes=None) -> None:
+    """EV at a fixed horizon across tenors, one line per entry regime: which tenor is best paid from here."""
+    g = lad[(lad["pair"] == pair) & (lad["archetype"] == archetype) & (lad["h"] == h) & (lad["regime"] != "ALL")]
+    regimes = regimes or sorted(g["regime"].unique())
+    fig, ax = plt.subplots(figsize=(6.4, 3.4))
+    for reg in regimes:
+        gr = g[g["regime"] == reg].sort_values("tenor_days")
+        if gr.empty:
+            continue
+        ax.errorbar(gr["tenor_days"], gr["mean"], yerr=[gr["mean"] - gr["ci_lo"], gr["ci_hi"] - gr["mean"]], fmt="-o", ms=4,
+                    color=COLOURS.get(reg, "#999"), capsize=2, lw=1.4, label=f"{reg} entry")
+    ax.set_xscale("log")
+    ticks = sorted(g["tenor_days"].unique())
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([TENOR_LABELS.get(int(t), str(int(t)) + "d") for t in ticks])
+    ax.axhline(0, color="#333", lw=0.8)
+    ax.set_xlabel("tenor")
+    ax.set_ylabel(f"EV at h={h}d per unit vega")
+    ax.set_title(f"{pair} · {archetype} · tenor curve at {h}d")
+    ax.legend(frameon=False, fontsize=8)
+    ax.grid(alpha=0.25)
+    fig.tight_layout()
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=150)
+    plt.close(fig)

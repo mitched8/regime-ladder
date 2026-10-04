@@ -5,7 +5,7 @@ dated when closed. Gate-threshold changes are recorded here with the reason.
 
 | # | Decision | Options | Status | Closed on | Note |
 |---|---|---|---|---|---|
-| D1 | Standard notional unit per archetype (for per-unit P&L) | per unit ATM vega; per unit RR notional in vega-neutral ratio; per unit fly notional; fixed cash notional per leg | open | | see `configs/archetypes.yaml` |
+| D1 | Per-unit denominator for base legs | vega at inception (default, needs per-day `vega`); source standard notional (fallback) | open | | see `configs/archetypes.yaml`; D14 covers combinations |
 | D2 | P&L currency | source currency; converted to a single reporting currency | open | | |
 | D3 | Horizons | {1,3,5,10,20,T} (default) | closed | | from SPEC |
 | D4 | Primary horizon for the vertical slice | 5d (default, market-making book) | closed | | |
@@ -17,7 +17,9 @@ dated when closed. Gate-threshold changes are recorded here with the reason.
 | D10 | Interval method | block bootstrap (default); HAC | closed | | validated on synthetic data |
 | D11 | Number of named states | 5 (level × direction, default); 3 (level only) | open | | decided by the finder on forward P&L at WU-08, confirmed at Gate 2 |
 | D12 | Cross-asset series in the profile | defaults in `configs/profile.yaml`; mapped to source tickers in `configs/local.yaml` | open | | expand or change freely; nothing else depends on the list |
-| D13 | Override of any `configs/gates.yaml` threshold | | — | | record each change as a new line below |
+| D14 | Leg scaling for combinations | one unit of vega at inception per base leg (default: weights in vega units, zero-sum = smile-vega-neutral); equal notional; premium-neutral; equal ES contribution | open | | WU-03 |
+| D15 | Tenors in Phase 3 | 1W, 1M, 3M (default `tenors_phase3`); any of 1W–1Y available | open | | WU-05 |
+| D16 | Override of any `configs/gates.yaml` threshold | | — | | record each change as a new line below |
 
 ## Gate threshold changes
 | Date | Key | Old | New | Reason |

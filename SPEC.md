@@ -54,10 +54,30 @@ episodes, is stable across halves of the history, and — separately — conditi
 parent state's ladder out of sample. The **state profile** (what distinguishes a state, and where
 today sits within it) is always shown.
 
+## 3b. Base legs, combinations, tenors
+
+The primitives are the **base legs** the backtester runs, per tenor: ATM straddle, 25d put, 25d
+call, 10d put, 10d call, each hedged leg by leg. Everything else is a **combination** — a weight
+vector over base legs entered on the same date. Because hedging is per leg and P&L is per leg per
+day, a combination's daily P&L is exactly the weighted sum of its legs' (`combine.combine`); its
+ladder is the ladder of that series, with no new backtest runs. Means are linear, so the
+state-conditional EV of any combination is the weighted sum of the legs' (`combine.ev_linear`);
+intervals, quantiles and ES are computed on the combined series for the combinations actually
+examined. Standard combinations (RR, fly at 25d and 10d) are declared in `configs/archetypes.yaml`.
+
+Any major tenor from 1W to 1Y is available; the ladder is per (pair, leg or combination, tenor)
+and horizons are capped at tenor. At a fixed short horizon, EV across tenors is a **tenor curve**
+per component (`report.plot_tenor_curve`).
+
 ## 4. Units
 
-Cash per unit of standard notional (defined per archetype in `configs/archetypes.yaml`). Never
-percentage of premium.
+Cash per unit of **vega at inception** for each base leg (`combine.to_vega_units`), so that
+combination weights are vega units and a zero-sum weight vector is smile-vega-neutral by
+construction; this is the market-making decomposition (a vega position plus smile tilts) and makes
+EV comparable across legs and tenors as earn per unit of vega risk. Where no per-day vega is
+available, the source's standard notional per `configs/archetypes.yaml`. Never percentage of
+premium. Alternative scalings (equal notional, premium-neutral, equal ES contribution) are a
+config choice, not the default (DECISIONS D14).
 
 ## 5. Probability model (Phase 3)
 

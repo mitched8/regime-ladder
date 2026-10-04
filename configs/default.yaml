@@ -1,5 +1,5 @@
 # Research configuration. Change here, never in code. Record changes in DECISIONS.md.
-horizons: [1, 3, 5, 10, 20]      # to-expiry is always added
+horizons: [1, 3, 5, 10, 20, 40, 60]   # to-expiry is always added; rungs above a component's tenor are dropped
 alpha: 0.10                       # 90% intervals
 ci: boot                          # boot (circular block bootstrap, better calibrated) | hac (Newey-West, faster)
 n_boot: 1000

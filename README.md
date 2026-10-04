@@ -9,7 +9,7 @@ regions of level × direction (carry, rising, crisis, normalising, settling), ca
 finder against forward outcomes; each state carries a profile (spot-vol behaviour, dollar-factor
 share, cross-asset correlations) and may contain discovered, stability-tested sub-states.
 
-It is deliberately small (about 1,900 lines including tests), has no dependency on any particular
+It is deliberately small (about 2,100 lines including tests), has no dependency on any particular
 data source, and is validated on synthetic data with analytic ground truth before any real data is
 touched. Site-specific adapters are written locally and never committed.
 
@@ -17,7 +17,7 @@ touched. Site-specific adapters are written locally and never committed.
 
 ```
 pip install -e ".[test]"
-pytest -q                          # 49 tests, ~40 s
+pytest -q                          # 54 tests, ~45 s
 python -m regime_ladder demo       # end to end on synthetic data; writes out/demo/card.md
 python -m regime_ladder validate   # intervals recover the analytic truth across seeds
 ```

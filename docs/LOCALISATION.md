@@ -18,7 +18,8 @@ Produce a frame matching `regime_ladder/schema.py` from whatever the backtest re
 | `age` | derived: trading-day count from entry, starting at 1 | `checks.py` enforces consecutiveness |
 | `pnl` | sum of the source's P&L components | cash per unit standard notional |
 | `pnl_trade`, `pnl_delta_hedge`, `pnl_vega_hedge` | source components if available | `checks.py` verifies they sum to `pnl` |
-| `vega`, `gamma_cash`, `vanna`, `volga` | source Greeks if available | needed for §10 diagnostics, not for the ladder |
+| `vega` | per-day vega of the live position per unit standard notional | needed for vega-unit scaling (`combine.to_vega_units`); without it, legs stay in notional units |
+| `gamma_cash`, `vanna`, `volga` | source Greeks if available | needed for the age-dependence diagnostics, not for the ladder |
 
 Pattern:
 
@@ -57,10 +58,16 @@ differences mean a cut-time or source mismatch and must be explained before Phas
 cache_dir: <path>
 pairs: [<pair>, <pair>]
 asof: <YYYY-MM-DD>        # the data snapshot date; put it in output filenames
-archetype_map:            # source name -> scaffold name
+archetype_map:            # source name -> scaffold base-leg name (combinations are built from legs)
   <source>: straddle_atm
+  <source>: put_25d
+  <source>: call_25d
+  <source>: put_10d
+  <source>: call_10d
+  # if the source also runs packages: map them too and reconcile against combine() at WU-03
   <source>: rr_25d
   <source>: fly_10d
+tenors: [5, 21, 63]       # trading days; any of 1W-1Y
 ```
 
 ## 4. Archetype conventions (`configs/archetypes.yaml`, tracked, generic)

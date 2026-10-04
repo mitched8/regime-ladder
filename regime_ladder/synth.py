@@ -47,12 +47,17 @@ RR_LEVEL = {"carry": -0.4, "rising": -1.3, "crisis": -2.5, "normalising": -1.6, 
 FLY_LEVEL = {"carry": 0.25, "rising": 0.35, "crisis": 0.60, "normalising": 0.45, "settling": 0.30}
 STRESS_MEAN = {"carry": 25.0, "rising": 50.0, "crisis": 82.0, "normalising": 60.0, "settling": 35.0}
 
-DEFAULT_BASE = {  # earn per day by state, cash per unit standard notional
+DEFAULT_BASE = {  # earn per day by state, cash per unit standard notional (per unit vega at inception for the legs)
     "straddle_atm": {"carry": -1.2, "rising": 0.8, "crisis": 1.5, "normalising": -2.0, "settling": -1.0},
+    "put_25d": {"carry": -0.5, "rising": 0.7, "crisis": 1.2, "normalising": -1.2, "settling": -0.6},
+    "call_25d": {"carry": -0.3, "rising": 0.1, "crisis": 0.2, "normalising": -0.7, "settling": -0.3},
+    "put_10d": {"carry": -0.4, "rising": 0.6, "crisis": 1.6, "normalising": -1.4, "settling": -0.5},
+    "call_10d": {"carry": -0.3, "rising": 0.0, "crisis": 0.1, "normalising": -0.6, "settling": -0.3},
     "rr_25d": {"carry": 0.2, "rising": -0.6, "crisis": -1.0, "normalising": 0.5, "settling": 0.3},
     "fly_10d": {"carry": 0.5, "rising": -0.5, "crisis": -1.8, "normalising": 1.2, "settling": 0.6},
 }
-DEFAULT_SLOPE = {"straddle_atm": 0.0, "rr_25d": -0.6, "fly_10d": -0.3}
+DEFAULT_SLOPE = {"straddle_atm": 0.0, "put_25d": -0.4, "call_25d": -0.2, "put_10d": -0.5, "call_10d": -0.2, "rr_25d": -0.6, "fly_10d": -0.3}
+DEMO_ARCHETYPES = ("straddle_atm", "rr_25d", "fly_10d")  # the three the tests and demo use by default
 DEFAULT_SIGMA_COMMON = {"carry": 1.5, "rising": 3.0, "crisis": 5.0, "normalising": 3.5, "settling": 2.0}
 DEFAULT_SIGMA_IDIO = 1.0
 DEFAULT_AR = 0.3
@@ -127,7 +132,7 @@ def earn(archetype, state, remaining, base=DEFAULT_BASE, slope=DEFAULT_SLOPE, de
     return base[archetype][state] + slope[archetype] * np.exp(-remaining / decay)
 
 
-def simulate_trades(market: pd.DataFrame, archetypes=tuple(DEFAULT_BASE), tenor_days: int = 21, pair: str = "EURUSD",
+def simulate_trades(market: pd.DataFrame, archetypes=DEMO_ARCHETYPES, tenor_days: int = 21, pair: str = "EURUSD",
                     seed: int = 1, sigma_common=DEFAULT_SIGMA_COMMON, sigma_idio: float = DEFAULT_SIGMA_IDIO,
                     ar: float = DEFAULT_AR, base=DEFAULT_BASE, slope=DEFAULT_SLOPE, decay: float = DEFAULT_DECAY) -> pd.DataFrame:
     """Trade-day table: one trade per archetype per business day, held to expiry."""
@@ -144,13 +149,14 @@ def simulate_trades(market: pd.DataFrame, archetypes=tuple(DEFAULT_BASE), tenor_
                 pnl = earn(a, st[d], tenor_days - age, base, slope, decay) + common[a][d] + eps
                 rows.append((tid, pair, a, tenor_days, dates[i], dates[d], age, pnl, st[d]))
     td = pd.DataFrame(rows, columns=["trade_id", "pair", "archetype", "tenor_days", "entry_date", "date", "age", "pnl", "regime_day"])
+    td["vega"] = 0.4 * np.sqrt((td["tenor_days"] - td["age"] + 1) / td["tenor_days"])  # illustrative: vega per unit notional falls like sqrt(remaining)
     td["pnl_trade"] = td["pnl"] * 1.4
     td["pnl_delta_hedge"] = -td["pnl"] * 0.3
     td["pnl_vega_hedge"] = td["pnl"] - td["pnl_trade"] - td["pnl_delta_hedge"]
     return td
 
 
-def true_ladder(archetypes=tuple(DEFAULT_BASE), tenor_days: int = 21, horizons=(1, 3, 5, 10, 20), P: np.ndarray = DEFAULT_P,
+def true_ladder(archetypes=DEMO_ARCHETYPES, tenor_days: int = 21, horizons=(1, 3, 5, 10, 20), P: np.ndarray = DEFAULT_P,
                 base=DEFAULT_BASE, slope=DEFAULT_SLOPE, decay: float = DEFAULT_DECAY) -> pd.DataFrame:
     """Analytic E[cum pnl to h | entry state] under the generating process."""
     hs = sorted(set(h for h in horizons if h <= tenor_days) | {tenor_days})

@@ -19,6 +19,7 @@ construction and within-horizon regime transitions are already in the measured o
 | `labels.py` | composite score, EWMA, level × direction labeller with a partition table, kink boundary estimate, `calibrate_states` (the state finder), transition counts, durations | HMMs (a challenger, out of scope here) |
 | `profile.py` | the characteristics vector (own-pair, cross-pair, cross-asset), per-state profile, distinguishing ranking, today's placement | any model |
 | `discover.py` | sub-state discovery inside a named state: k-means, BIC proxy, min-episodes and half-split stability conditions, auto-naming, assignment | deciding whether a sub-state changes the number (that is WU-11) |
+| `combine.py` | vega-unit scaling of base legs; exact aggregation of legs into combinations; linear EV of any combination; a screen over candidate combinations | package-level hedging effects (the source hedges per leg, so there are none) |
 | `ladder.py` | cumulative, ladder, HAC and block-bootstrap intervals, increments, shrinkage, persistence split, episodes | any forecasting of transitions |
 | `evaluate.py` | walk-forward comparison against the unconditional benchmark | the continuous-feature benchmark (WU-11 adds it) |
 | `gates.py` | reads `configs/gates.yaml`, evaluates pass/fail | set thresholds |
