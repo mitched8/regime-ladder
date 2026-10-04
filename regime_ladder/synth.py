@@ -63,6 +63,10 @@ DEFAULT_BASE = {  # earn per day by state, cash per unit vega at inception for t
     "fly_10d": {"carry": 0.5, "rising": -0.8, "agitated": -0.4, "stressed": -2.0, "normalising": 1.4, "settling": 0.6, "extreme": -5.0},
 }
 DEFAULT_SLOPE = {"straddle_atm": 0.0, "put_25d": -0.4, "call_25d": -0.2, "put_10d": -0.5, "call_10d": -0.2, "rr_25d": -0.6, "fly_10d": -0.3}
+# Within agitated, the hidden spot-vol correlation sign moves the skew legs' earn symmetrically (the state mean
+# is unchanged, so the analytic ladder still holds): with vol bid on rallies the long-call side earns.
+SUBTYPE_ADJ = {"rr_25d": {"corr_neg": -0.6, "corr_pos": 0.6}, "call_25d": {"corr_neg": -0.3, "corr_pos": 0.3}, "put_25d": {"corr_neg": 0.3, "corr_pos": -0.3},
+               "call_10d": {"corr_neg": -0.25, "corr_pos": 0.25}, "put_10d": {"corr_neg": 0.25, "corr_pos": -0.25}}
 DEMO_ARCHETYPES = ("straddle_atm", "rr_25d", "fly_10d")
 DEFAULT_SIGMA_COMMON = {"carry": 1.5, "rising": 3.0, "agitated": 3.0, "stressed": 5.0, "normalising": 3.5, "settling": 2.0, "extreme": 9.0}
 DEFAULT_SIGMA_IDIO = 1.0
@@ -176,8 +180,8 @@ def simulate_market(n_days: int = 1260, seed: int = 0, P: np.ndarray = DEFAULT_P
     return pd.DataFrame(out, index=dates).rename_axis("date")
 
 
-def earn(archetype, state, remaining, base=DEFAULT_BASE, slope=DEFAULT_SLOPE, decay=DEFAULT_DECAY):
-    return base[archetype][state] + slope[archetype] * np.exp(-remaining / decay)
+def earn(archetype, state, remaining, base=DEFAULT_BASE, slope=DEFAULT_SLOPE, decay=DEFAULT_DECAY, sub="none"):
+    return base[archetype][state] + slope[archetype] * np.exp(-remaining / decay) + SUBTYPE_ADJ.get(archetype, {}).get(sub, 0.0)
 
 
 def simulate_trades(market: pd.DataFrame, archetypes=DEMO_ARCHETYPES, tenor_days: int = 21, pair: str = "EURUSD",
@@ -185,6 +189,7 @@ def simulate_trades(market: pd.DataFrame, archetypes=DEMO_ARCHETYPES, tenor_days
                     ar: float = DEFAULT_AR, base=DEFAULT_BASE, slope=DEFAULT_SLOPE, decay: float = DEFAULT_DECAY) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     dates, st, n = market.index, market["state_true"].values, len(market)
+    sub = market["subtype_true"].values if "subtype_true" in market else np.array(["none"] * n)
     common = {a: rng.normal(0, 1, n) * np.array([sigma_common[x] for x in st]) for a in archetypes}
     rows = []
     for a in archetypes:
@@ -193,7 +198,7 @@ def simulate_trades(market: pd.DataFrame, archetypes=DEMO_ARCHETYPES, tenor_days
             for age in range(1, tenor_days + 1):
                 d = i + age
                 eps = ar * eps + rng.normal(0, sigma_idio)
-                pnl = earn(a, st[d], tenor_days - age, base, slope, decay) + common[a][d] + eps
+                pnl = earn(a, st[d], tenor_days - age, base, slope, decay, sub[d]) + common[a][d] + eps
                 rows.append((tid, pair, a, tenor_days, dates[i], dates[d], age, pnl, st[d]))
     td = pd.DataFrame(rows, columns=["trade_id", "pair", "archetype", "tenor_days", "entry_date", "date", "age", "pnl", "regime_day"])
     td["vega"] = 0.4 * np.sqrt((td["tenor_days"] - td["age"] + 1) / td["tenor_days"])
