@@ -53,62 +53,94 @@ def _tilt_array(P0: np.ndarray, r: np.ndarray, psi: np.ndarray, beta: float) -> 
     return W / W.sum(axis=2, keepdims=True)
 
 
-def loglik(labels: pd.Series, psi: pd.Series, P0: pd.DataFrame, beta: float) -> float:
-    """Log-likelihood of the observed one-step transitions under tilt(P0, psi_t, beta), psi aligned to the
-    FROM date (today's pressure governs tonight's move)."""
+def _pressure_values(psi: pd.Series, beta: float, base: pd.Series | None, gamma: float, index) -> np.ndarray:
+    """Effective pressure gamma * base + beta * psi on `index`; a missing value in either term counts as zero."""
+    p = beta * np.nan_to_num(psi.reindex(index).values.astype(float))
+    if base is not None and gamma != 0.0:
+        p = p + gamma * np.nan_to_num(base.reindex(index).values.astype(float))
+    return p
+
+
+def loglik(labels: pd.Series, psi: pd.Series, P0: pd.DataFrame, beta: float, k: int = 1,
+           base: pd.Series | None = None, gamma: float = 0.0) -> float:
+    """Log-likelihood of the observed k-step transitions s_t -> s_{t+k} under the k-th power of the tilt by
+    the effective pressure gamma * base_t + beta * psi_t, aligned to the FROM date and held frozen over
+    the k days.
+
+    k = 1 scores tonight's move. k > 1 scores where the state is k days out, which is the question a
+    leading feature is meant to answer and the horizon the fan displays — and it is the only fair test
+    against a smoothed, hysteretic labeller, whose one-step moves lag the market by days. Overlapping
+    k-step observations are fine for comparing models on the same folds; they are not independent, so
+    nothing here is a p-value.
+
+    `base` with `gamma` is a baseline covariate already in the tilt (the continuous state score, which
+    carries the distance to the next boundary): beta then measures what psi adds beyond it."""
     names = list(P0.index)
     idx = {n: i for i, n in enumerate(names)}
     s = labels.map(idx).values
-    p = psi.reindex(labels.index).values.astype(float)
-    ok = ~np.isnan(s[:-1]) & ~np.isnan(s[1:])
-    a, b, pp = s[:-1][ok].astype(int), s[1:][ok].astype(int), p[:-1][ok]
-    T = _tilt_array(P0.values, ranks(names), pp, beta)
-    return float(np.log(np.clip(T[np.arange(len(a)), a, b], 1e-300, None)).sum())
+    p = _pressure_values(psi, beta, base, gamma, labels.index)
+    ok = ~np.isnan(s[:-k]) & ~np.isnan(s[k:])
+    a, b, pp = s[:-k][ok].astype(int), s[k:][ok].astype(int), p[:-k][ok]
+    T = _tilt_array(P0.values, ranks(names), pp, 1.0)
+    Tk = T
+    for _ in range(k - 1):
+        Tk = Tk @ T
+    return float(np.log(np.clip(Tk[np.arange(len(a)), a, b], 1e-300, None)).sum())
 
 
-def fit_tilt(labels: pd.Series, psi: pd.Series, P0: pd.DataFrame, grid=None) -> dict:
-    """Maximum-likelihood beta on a grid with one golden-section refinement. Returns beta, log-likelihoods
-    with and without the tilt, and the gain per transition (nats)."""
-    grid = np.linspace(-3, 3, 61) if grid is None else np.asarray(grid)
-    ll = np.array([loglik(labels, psi, P0, b) for b in grid])
+def _maximise(f, grid):
+    ll = np.array([f(b) for b in grid])
     i = int(np.argmax(ll))
     lo, hi = grid[max(0, i - 1)], grid[min(len(grid) - 1, i + 1)]
     phi = (np.sqrt(5) - 1) / 2
     c, d = hi - phi * (hi - lo), lo + phi * (hi - lo)
-    fc, fd = loglik(labels, psi, P0, c), loglik(labels, psi, P0, d)
-    for _ in range(25):
+    fc, fd = f(c), f(d)
+    for _ in range(20):
         if fc > fd:
             hi, d, fd = d, c, fc
-            c = hi - phi * (hi - lo); fc = loglik(labels, psi, P0, c)
+            c = hi - phi * (hi - lo); fc = f(c)
         else:
             lo, c, fc = c, d, fd
-            d = lo + phi * (hi - lo); fd = loglik(labels, psi, P0, d)
-    beta = float(0.5 * (lo + hi))
-    ll1, ll0 = loglik(labels, psi, P0, beta), loglik(labels, psi, P0, 0.0)
-    n = int(labels.notna().sum() - 1)
-    return {"beta": beta, "loglik": ll1, "loglik0": ll0, "gain_per_transition": (ll1 - ll0) / max(n, 1), "n": n}
+            d = lo + phi * (hi - lo); fd = f(d)
+    return float(0.5 * (lo + hi))
+
+
+def fit_tilt(labels: pd.Series, psi: pd.Series, P0: pd.DataFrame, grid=None, k: int = 1,
+             base: pd.Series | None = None) -> dict:
+    """Maximum-likelihood beta for psi (k-step likelihood). With `base`, its coefficient gamma is fitted
+    first on its own and held fixed while beta is fitted, so beta is psi's INCREMENTAL effect. Returns
+    beta, gamma, log-likelihoods with and without psi, and the gain per observation (nats)."""
+    grid = np.linspace(-3, 3, 31) if grid is None else np.asarray(grid)
+    gamma = _maximise(lambda g: loglik(labels, base, P0, g, k), grid) if base is not None else 0.0
+    beta = _maximise(lambda b: loglik(labels, psi, P0, b, k, base, gamma), grid)
+    ll1, ll0 = loglik(labels, psi, P0, beta, k, base, gamma), loglik(labels, psi, P0, 0.0, k, base, gamma)
+    n = int(labels.notna().sum() - k)
+    return {"beta": beta, "gamma": gamma, "loglik": ll1, "loglik0": ll0, "gain_per_transition": (ll1 - ll0) / max(n, 1), "n": n, "k": k}
 
 
 def oos_gain(labels: pd.Series, psi: pd.Series, P0: pd.DataFrame | None = None, folds: int = 4,
-             min_train_frac: float = 0.4, prior_strength: float = 10.0) -> pd.DataFrame:
-    """Time-ordered folds: estimate P0 (sticky prior) and beta on the training part, score the test part.
-    One row per fold with the out-of-sample log-likelihood gain per transition and the fitted beta.
-    The tilt earns its place if the gain is positive in most folds and in total."""
+             min_train_frac: float = 0.4, prior_strength: float = 10.0, k: int = 1, base: pd.Series | None = None) -> pd.DataFrame:
+    """Time-ordered folds: estimate P0 (sticky prior), gamma (for `base`) and beta on the training part, score
+    the test part with the k-step likelihood with and without psi. One row per fold with the out-of-sample
+    gain per observation and the fitted beta. psi earns its place if the gain is positive in most folds and
+    in total."""
     n = len(labels)
     cuts = np.linspace(int(min_train_frac * n), n, folds + 1).astype(int)
     rows = []
     for a, b in zip(cuts[:-1], cuts[1:]):
-        tr, te = labels.iloc[:a], labels.iloc[a - 1: b]  # overlap one day so the first test transition is scored
+        tr, te = labels.iloc[:a], labels.iloc[a - k: b]  # overlap k days so the first test observation is scored
         names = [s for s in list(ALL_STATES) + list(STATES3) if s in set(labels)]
         P_tr = transition_matrix(tr, names=names, prior_strength=prior_strength) if P0 is None else P0
-        fit = fit_tilt(tr, psi, P_tr)
-        ll1, ll0 = loglik(te, psi, P_tr, fit["beta"]), loglik(te, psi, P_tr, 0.0)
-        m = len(te) - 1
-        rows.append({"fold": len(rows) + 1, "train_end": tr.index[-1], "beta": fit["beta"], "n_test": m,
+        fit = fit_tilt(tr, psi, P_tr, k=k, base=base)
+        ll1 = loglik(te, psi, P_tr, fit["beta"], k, base, fit["gamma"])
+        ll0 = loglik(te, psi, P_tr, 0.0, k, base, fit["gamma"])
+        m = len(te) - k
+        rows.append({"fold": len(rows) + 1, "train_end": tr.index[-1], "beta": fit["beta"], "gamma": fit["gamma"], "n_test": m,
                      "oos_gain_per_transition": (ll1 - ll0) / max(m, 1)})
     out = pd.DataFrame(rows)
     out.attrs["total_gain_per_transition"] = float((out["oos_gain_per_transition"] * out["n_test"]).sum() / max(out["n_test"].sum(), 1))
     out.attrs["folds_positive"] = int((out["oos_gain_per_transition"] > 0).sum())
+    out.attrs["k"] = k
     return out
 
 

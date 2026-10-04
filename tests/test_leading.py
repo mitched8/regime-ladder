@@ -63,6 +63,24 @@ def test_screen_retains_the_true_pressure_and_an_energy_feature_where_energy_mat
     assert sc.loc[["stored_energy", "gap_pct"], "retain"].any(), sc
 
 
+def test_true_pressure_survives_estimated_labels(energy_world):
+    """The transition test is run against labels the market would actually produce, not the truth. With the
+    continuous state score as a baseline covariate in the tilt and the k-step likelihood, the true pressure is
+    still retained; without the baseline it would be confounded by distance to the boundary (pressure is highest
+    when vol is low, i.e. far below the first boundary) and come out with the wrong sign."""
+    import yaml
+    from regime_ladder.__main__ import make_labels
+    m, comp, y = energy_world
+    cfg = yaml.safe_load(open("configs/default.yaml"))
+    _, lab_est, _ = make_labels(m, cfg, "EURUSD", y)
+    assert (lab_est.values == m["state_true"].values).mean() < 0.8  # genuinely estimated, not the truth
+    res = leading.incremental_value(m["pressure_true"], lab_est, comp, y)
+    assert leading.retain(res, CFG), res
+    assert res["beta_mean"] > 0
+    naive = transitions.oos_gain(lab_est, (m["pressure_true"] - m["pressure_true"].mean()) / m["pressure_true"].std(), folds=4, k=1)
+    assert naive.attrs["total_gain_per_transition"] < res["transition_gain"]
+
+
 def test_a_lagged_feature_loses_value(energy_world):
     m, comp, y = energy_world
     now = leading.incremental_value(m["pressure_true"], m["state_true"], comp, y)

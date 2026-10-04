@@ -61,6 +61,19 @@ def gate_phase3(wf: pd.DataFrame, cfg: dict) -> dict:
     return res
 
 
+def gate_phase4(screen: pd.DataFrame, pressure_gain: dict | None, cfg: dict) -> dict:
+    """Leading information has incremental value: at least one feature is retained by both tests, and the
+    pressure index built from the retained features improves the out-of-sample transition likelihood."""
+    c = cfg["phase4_leading"]
+    retained = [str(f) for f in screen.loc[screen["retain"], "feature"]] if len(screen) else []
+    pg = pressure_gain or {}
+    res = {"retained": retained, "pressure_transition_gain": pg.get("total_gain_per_transition", float("nan")),
+           "pressure_folds_positive": pg.get("folds_positive", 0)}
+    res["pass"] = bool(retained and res["pressure_transition_gain"] >= c["min_transition_gain"]
+                       and res["pressure_folds_positive"] >= c["min_folds_up"])
+    return res
+
+
 def write_result(obj: dict, path: str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(json.dumps(obj, indent=2, default=str))

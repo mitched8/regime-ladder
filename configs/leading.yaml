@@ -1,0 +1,30 @@
+# Shock detection, transitions and leading features. Change here, never in code. Record changes in DECISIONS.md.
+
+shock:
+  cusum_k: 0.3                    # CUSUM allowance on (capped) squared surprises
+  arl0: 1000                      # threshold h set so the average run length under the null is ~4 years
+  null_window: 252                # trailing window for the empirical null mean (and the first calibration)
+  clip: 9.0                       # squared surprises are capped at 3 sigma squared: isolated days belong to the jump channel
+  hazard: 0.01                    # BOCD prior changepoint hazard (one per ~100 days)
+  bocd_m: 10                      # report P(run length < m)
+  w_max: 0.5                      # blend: at score 100, half of each state's mass moves to its escalation state (heuristic)
+
+transitions:
+  prior_strength: 10              # sticky prior on the constant matrix (effective observations)
+  horizon: 21                     # fan length in days
+  pressure_policy: decay          # future path of the pressure index: frozen | decay | zero  (calendar features use `calendar`)
+  pressure_halflife: 10
+
+leading:
+  features:                       # candidates, tested one at a time against the baseline (named state + continuous score)
+    stored_energy: {anchor_window: 120}
+    gap_pct: {anchor_window: 120}
+    complacency: {}
+    jump_cluster_pct: {window: 21, k: 2.0}
+    coupling_shift_pct: {short: 21, long: 126}
+    coherence_pct: {window: 21}
+  events: []                      # scheduled dates known in advance -> event_proximity (0..100); the adapter can fill per pair
+  target: forward_pnl             # outcome for the incremental-value test: forward_pnl (archetype's forward 5d earn) | realised_minus_implied
+  target_archetype: straddle_atm
+  lag_check: 1                    # also report value with the feature delayed by this many days
+  pressure_weights: null          # null = equal weights over the RETAINED features; or {feature: weight}

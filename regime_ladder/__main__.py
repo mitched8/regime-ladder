@@ -1,4 +1,4 @@
-"""CLI.  python -m regime_ladder {synth,check,labels,ladder,evaluate,validate,demo} ...
+"""CLI.  python -m regime_ladder {synth,check,labels,ladder,evaluate,validate,shock,transitions,leading,demo} ...
 
 `demo` runs the whole pipeline on synthetic data — calibrated six-state labels, ladder, profile,
 sub-state discovery, gates — and writes a card. It is the smoke test for a fresh environment.
@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from . import checks, discover, evaluate, features, gates, labels, ladder, profile, report, schema, synth, tags
+from . import checks, discover, evaluate, features, gates, labels, ladder, leading, profile, report, schema, shock, synth, tags, transitions
 
 
 def _cfg(path):
@@ -53,7 +53,7 @@ def make_labels(market: pd.DataFrame, cfg: dict, pair: str, target: pd.Series | 
 
 
 def cmd_synth(a):
-    m = synth.simulate_market(a.days, seed=a.seed)
+    m = synth.simulate_market(a.days, seed=a.seed, energy_beta=a.energy_beta)
     td = synth.simulate_trades(m, tenor_days=a.tenor, seed=a.seed + 1)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     m.to_parquet(out / "market.parquet"); td.to_parquet(out / "trade_days.parquet")
@@ -125,11 +125,83 @@ def cmd_validate(a):
     print(r.to_string(index=False, float_format=lambda v: f"{v:.3f}")); print(f"mean coverage {r.coverage_90.mean():.3f} (nominal 0.90)")
 
 
+def _labels_series(path: str) -> pd.Series:
+    lab = pd.read_parquet(path) if path.endswith(".parquet") else pd.read_csv(path, parse_dates=["date"])
+    return lab.set_index("date")["regime"]
+
+
+def cmd_shock(a):
+    """Shock components and score for a market frame; lead profile against labels if given."""
+    cfg = _cfg(a.leading_config)["shock"]
+    m = pd.read_parquet(a.market)
+    sc = shock.shock_score(m, cfg=cfg)
+    sc["har_vol_forecast"] = shock.har_series(m)
+    Path(a.out).mkdir(parents=True, exist_ok=True); sc.to_csv(Path(a.out) / "shock.csv")
+    print(sc.dropna().tail(5).round(3).to_string())
+    if a.labels:
+        print(shock.lead_profile(sc["score"], _labels_series(a.labels)).round(2).to_string(index=False))
+
+
+def cmd_transitions(a):
+    """Constant matrix, duration check, and the fan from today's state — tilted by a pressure series if given."""
+    tcfg = _cfg(a.leading_config)["transitions"]
+    lab = _labels_series(a.labels)
+    names = [x for x in list(labels.ALL_STATES) + list(labels.STATES3) if x in set(lab)]
+    P = labels.transition_matrix(lab, names=names, prior_strength=tcfg["prior_strength"])
+    out = Path(a.out); out.mkdir(parents=True, exist_ok=True); P.to_csv(out / "transition_matrix.csv")
+    print(P.round(3).to_string()); print(transitions.implied_vs_observed_duration(P, lab).round(1).to_string())
+    pi0 = pd.Series({lab.iloc[-1]: 1.0})
+    f0 = transitions.fan(P, pi0, psi_path=np.zeros(tcfg["horizon"]))
+    print("constant matrix — expected days next", tcfg["horizon"], ":", transitions.expected_days(f0).round(1).to_dict())
+    if a.pressure:
+        psi = pd.read_csv(a.pressure, index_col=0, parse_dates=True).iloc[:, 0]
+        g = transitions.oos_gain(lab, psi, folds=4, prior_strength=tcfg["prior_strength"])
+        fit = transitions.fit_tilt(lab, psi, P)
+        path = transitions.covariate_path(float(psi.reindex(lab.index).iloc[-1]), tcfg["horizon"], tcfg["pressure_policy"], tcfg["pressure_halflife"])
+        f1 = transitions.fan(P, pi0, psi_path=path, beta=fit["beta"])
+        hi = [x for x in ("stressed", "extreme", "crisis") if x in P.index]
+        print(f"tilt beta {fit['beta']:+.2f} · OOS gain/transition {g.attrs['total_gain_per_transition']:+.4f} in {g.attrs['folds_positive']}/4 folds")
+        print("P(" + "+".join(hi) + ") constant vs tilted:", transitions.p_state_at(f0, hi).round(3).to_dict(), transitions.p_state_at(f1, hi).round(3).to_dict())
+        f1.to_csv(out / "fan_tilted.csv")
+    f0.to_csv(out / "fan_constant.csv")
+
+
+def _leading_target(m: pd.DataFrame, lcfg: dict, td_path: str | None) -> pd.Series:
+    if lcfg["target"] == "forward_pnl" and td_path:
+        return _forward_pnl_target(schema.coerce(pd.read_parquet(td_path)), lcfg["target_archetype"])
+    return (m["rv_1m"].shift(-21) - m["atm_1m"]).rename("realised_minus_implied")
+
+
+def cmd_leading(a):
+    """Screen the leading features one at a time, build the pressure index from the retained ones, fit the tilt, evaluate Gate 4."""
+    cfg = _cfg(a.config); lcfg_all = _cfg(a.leading_config); lcfg = lcfg_all["leading"]
+    m = pd.read_parquet(a.market); lab = _labels_series(a.labels)
+    comp = labels.composite(features.build(m, names=cfg["labeller"]["features"]))
+    L = leading.build(m, names=list(lcfg["features"]), events=lcfg.get("events") or None, **lcfg["features"])
+    y = _leading_target(m, lcfg, a.td)
+    gc = gates.load_gates(a.gates)
+    sc = leading.screen(L, lab, comp, y, gc["phase4_leading"])
+    lagged = leading.screen(L, lab, comp, y, gc["phase4_leading"], lag=int(lcfg.get("lag_check", 1)))
+    sc["delta_r2_lagged"] = sc["feature"].map(lagged.set_index("feature")["delta_r2"])
+    out = Path(a.out); out.mkdir(parents=True, exist_ok=True); sc.to_csv(out / "leading_screen.csv", index=False); L.to_csv(out / "leading_features.csv")
+    print(sc.round(4).to_string(index=False))
+    kept = [f for f in sc.loc[sc["retain"], "feature"]]
+    pg = None
+    if kept:
+        psi = leading.pressure(L, lcfg.get("pressure_weights") or {k: 1.0 for k in kept})
+        psi.to_csv(out / "pressure.csv")
+        g = transitions.oos_gain(lab, psi, folds=4, prior_strength=lcfg_all["transitions"]["prior_strength"])
+        pg = g.attrs
+        print(f"pressure index from {kept}: OOS transition gain {g.attrs['total_gain_per_transition']:+.4f} in {g.attrs['folds_positive']}/4 folds")
+    g4 = gates.gate_phase4(sc, pg, gc); gates.write_result(g4, out / "gate_phase4.json")
+    print("phase4 (leading) gate:", g4["pass"], "· retained:", kept or "none")
+
+
 def cmd_demo(a):
     cfg = _cfg(a.config); pcfg = _cfg(a.profile_config)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     # 10 years of market for labelling and profiles; the last 5 carry trades (as in the real plan)
-    m = synth.simulate_market(a.days, seed=a.seed)
+    m = synth.simulate_market(a.days, seed=a.seed, energy_beta=a.energy_beta)
     m_trade = m.iloc[-min(len(m), 1260):]
     td = synth.simulate_trades(m_trade, seed=a.seed + 1)
     rep = checks.check_trade_days(td); print(checks.format_report(rep)); checks.assert_clean(rep)
@@ -163,6 +235,29 @@ def cmd_demo(a):
             lad_t = ladder.ladder(cum_t, split_lab, alpha=cfg["alpha"], ci="hac")
             g5 = lad_t[(lad_t["archetype"] == "rr_25d") & (lad_t["h"] == 5) & lad_t["regime"].str.startswith(today)]
             lines.append("rr_25d 5d EV by tag: " + " · ".join(f"{r.regime} {r['mean']:+.2f} (ep {int(r.episodes)})" for _, r in g5.iterrows()))
+    # shock, transitions and leading features
+    lcfg = _cfg(a.leading_config)
+    sc = shock.shock_score(m, cfg=lcfg["shock"])
+    lines.append(f"shock score today {sc['score'].iloc[-1]:.0f}/100 (CUSUM {sc['cusum_pressure'].iloc[-1]:.2f}, BOCD P(short run) {sc['bocd_p_short'].iloc[-1]:.2f})")
+    names = [x for x in labels.ALL_STATES if x in set(lab_s)]
+    P = labels.transition_matrix(lab_s, names=names, prior_strength=lcfg["transitions"]["prior_strength"])
+    hi = [x for x in ("stressed", "extreme") if x in P.index]
+    f0 = transitions.fan(P, pd.Series({today: 1.0}), psi_path=np.zeros(21))
+    L = leading.build(m, names=list(lcfg["leading"]["features"]), **lcfg["leading"]["features"])
+    scr = leading.screen(L, lab_s, labels.composite(features.build(m, names=cfg["labeller"]["features"])), target.reindex(m.index), gates.load_gates(a.gates)["phase4_leading"])
+    kept = list(scr.loc[scr["retain"], "feature"])
+    p_const = transitions.p_state_at(f0, hi)
+    if kept:
+        psi = leading.pressure(L, {k: 1.0 for k in kept})
+        fit = transitions.fit_tilt(lab_s, psi, P)
+        path = transitions.covariate_path(float(psi.iloc[-1]), 21, lcfg["transitions"]["pressure_policy"], lcfg["transitions"]["pressure_halflife"])
+        p_tilt = transitions.p_state_at(transitions.fan(P, pd.Series({today: 1.0}), psi_path=path, beta=fit["beta"]), hi)
+        lines.append(f"leading: retained {kept}; pressure today {psi.iloc[-1]:+.2f}, tilt β {fit['beta']:+.2f}; P(stressed/extreme) at 5/10/21d "
+                     + " / ".join(f"{p_const[h]:.0%}→{p_tilt[h]:.0%}" for h in (5, 10, 21)))
+    else:
+        lines.append("leading: no feature retained by the incremental-value test; P(stressed/extreme) at 5/10/21d "
+                     + " / ".join(f"{p_const[h]:.0%}" for h in (5, 10, 21)) + " under the constant matrix")
+    scr.to_csv(out / "leading_screen.csv", index=False); sc.to_csv(out / "shock.csv"); P.to_csv(out / "transition_matrix.csv")
     g = ("EURUSD", "rr_25d", 21)
     card = report.card_md(lad, inc, split, g, today, profile_lines=lines)
     (out / "card.md").write_text(card); lad.to_csv(out / "ladder.csv", index=False); wf.to_csv(out / "walk_forward.csv", index=False)
@@ -175,9 +270,9 @@ def cmd_demo(a):
 def main(argv=None):
     p = argparse.ArgumentParser(prog="regime_ladder")
     p.add_argument("--config", default="configs/default.yaml"); p.add_argument("--gates", default="configs/gates.yaml")
-    p.add_argument("--profile-config", default="configs/profile.yaml")
+    p.add_argument("--profile-config", default="configs/profile.yaml"); p.add_argument("--leading-config", default="configs/leading.yaml")
     sp = p.add_subparsers(dest="cmd", required=True)
-    s = sp.add_parser("synth"); s.add_argument("--out", default="data/synth"); s.add_argument("--days", type=int, default=2520)
+    s = sp.add_parser("synth"); s.add_argument("--out", default="data/synth"); s.add_argument("--days", type=int, default=2520); s.add_argument("--energy-beta", type=float, default=0.0, dest="energy_beta")
     s.add_argument("--tenor", type=int, default=21); s.add_argument("--seed", type=int, default=0); s.set_defaults(f=cmd_synth)
     c = sp.add_parser("check"); c.add_argument("--td", required=True); c.add_argument("--labels"); c.set_defaults(f=cmd_check)
     l = sp.add_parser("labels"); l.add_argument("--market", required=True); l.add_argument("--pair", required=True); l.add_argument("--out", required=True)
@@ -185,7 +280,10 @@ def main(argv=None):
     d = sp.add_parser("ladder"); d.add_argument("--td", required=True); d.add_argument("--labels", required=True); d.add_argument("--out", default="out/ladder"); d.set_defaults(f=cmd_ladder)
     e = sp.add_parser("evaluate"); e.add_argument("--td", required=True); e.add_argument("--labels", required=True); e.add_argument("--out", default="out/eval"); e.set_defaults(f=cmd_evaluate)
     v = sp.add_parser("validate"); v.add_argument("--seeds", type=int, default=8); v.add_argument("--days", type=int, default=1260); v.set_defaults(f=cmd_validate)
-    m = sp.add_parser("demo"); m.add_argument("--out", default="out/demo"); m.add_argument("--days", type=int, default=2520); m.add_argument("--seed", type=int, default=0); m.set_defaults(f=cmd_demo)
+    k = sp.add_parser("shock"); k.add_argument("--market", required=True); k.add_argument("--labels"); k.add_argument("--out", default="out/shock"); k.set_defaults(f=cmd_shock)
+    t = sp.add_parser("transitions"); t.add_argument("--labels", required=True); t.add_argument("--pressure"); t.add_argument("--out", default="out/transitions"); t.set_defaults(f=cmd_transitions)
+    g = sp.add_parser("leading"); g.add_argument("--market", required=True); g.add_argument("--labels", required=True); g.add_argument("--td"); g.add_argument("--out", default="out/leading"); g.set_defaults(f=cmd_leading)
+    m = sp.add_parser("demo"); m.add_argument("--out", default="out/demo"); m.add_argument("--days", type=int, default=2520); m.add_argument("--seed", type=int, default=0); m.add_argument("--energy-beta", type=float, default=0.0, dest="energy_beta"); m.set_defaults(f=cmd_demo)
     a = p.parse_args(argv); a.f(a)
 
 

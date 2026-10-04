@@ -175,48 +175,55 @@ def _oos_r2(X: np.ndarray, y: np.ndarray, folds: int, min_train_frac: float):
 
 
 def incremental_value(feature: pd.Series, labels: pd.Series, state_score: pd.Series, target: pd.Series,
-                      folds: int = 4, min_train_frac: float = 0.4, lag: int = 0) -> dict:
+                      folds: int = 4, min_train_frac: float = 0.4, lag: int = 0, k: int = 5) -> dict:
     """One feature against the baseline that already knows the state.
 
     Outcome test: out-of-sample R^2 of `target` (a forward outcome aligned to the decision date) on
     [state dummies + continuous state score] versus the same plus the feature; reports the R^2 gain and
     how many folds improve. Transition test: `transitions.oos_gain` with the standardised feature as the
-    pressure. `lag` shifts the feature back by that many days, to show whether any value survives a
-    delay in getting the data. Everything is time-ordered; nothing is fitted on the future.
+    pressure, the standardised state score as the baseline covariate already in the tilt, and the k-step
+    likelihood (k = 5 by default: where the state is a week out, not tonight's move — a smoothed
+    labeller's one-step moves lag the market by days and would hide any lead). `lag` shifts the feature
+    back by that many days, to show whether value survives a delay in getting the data. Everything is
+    time-ordered; nothing is fitted on the future.
     """
     f = feature.shift(lag)
+    # transition test on every day with a feature and a label (the whole history); outcome test where the target exists too
+    dt = pd.concat([f.rename("f"), labels.rename("s")], axis=1).dropna()
     df = pd.concat([f.rename("f"), labels.rename("s"), state_score.rename("c"), target.rename("y")], axis=1).dropna()
-    if len(df) < 200:
+    if len(df) < 200 or f.std() == 0:
         return {"n": len(df), "retain": False}
+    mu, sd = dt["f"].mean(), dt["f"].std()
     D = pd.get_dummies(df["s"]).astype(float).values
     base = np.column_stack([D, df["c"].values, df["c"].values ** 2])
-    fz = ((df["f"] - df["f"].mean()) / df["f"].std()).values
+    fz = ((df["f"] - mu) / sd).values
     r2_base, pf_base = _oos_r2(base, df["y"].values, folds, min_train_frac)
     r2_feat, pf_feat = _oos_r2(np.column_stack([base, fz]), df["y"].values, folds, min_train_frac)
     folds_up = int(sum(1 for a, b in zip(pf_base, pf_feat) if b > a))
-    psi = pd.Series(fz, index=df.index)
-    tg = oos_gain(df["s"], psi, folds=folds, min_train_frac=min_train_frac)
-    return {"n": int(len(df)), "r2_base": r2_base, "r2_with": r2_feat, "delta_r2": r2_feat - r2_base, "folds_r2_up": folds_up,
-            "transition_gain": tg.attrs["total_gain_per_transition"], "folds_transition_up": tg.attrs["folds_positive"],
-            "beta_mean": float(tg["beta"].mean()), "folds": folds}
+    psi = (dt["f"] - mu) / sd
+    cz = (state_score - state_score.mean()) / state_score.std()
+    tg = oos_gain(dt["s"], psi, folds=folds, min_train_frac=min_train_frac, k=k, base=cz)
+    return {"n": int(len(df)), "n_transitions": int(len(dt) - 1), "r2_base": r2_base, "r2_with": r2_feat, "delta_r2": r2_feat - r2_base,
+            "folds_r2_up": folds_up, "transition_gain": tg.attrs["total_gain_per_transition"], "folds_transition_up": tg.attrs["folds_positive"],
+            "beta_mean": float(tg["beta"].mean()), "gamma_mean": float(tg["gamma"].mean()), "folds": folds, "k": k}
 
 
 def retain(res: dict, cfg: dict) -> bool:
     """Gate 4 rule: both tests positive, in most folds."""
-    if not res or not res.get("n"):
+    if not res or not res.get("n") or "delta_r2" not in res:
         return False
     return bool(res["delta_r2"] >= cfg["min_delta_r2"] and res["folds_r2_up"] >= cfg["min_folds_up"]
                 and res["transition_gain"] >= cfg["min_transition_gain"] and res["folds_transition_up"] >= cfg["min_folds_up"])
 
 
 def screen(candidates: pd.DataFrame, labels: pd.Series, state_score: pd.Series, target: pd.Series, cfg: dict,
-           folds: int = 4, lag: int = 0) -> pd.DataFrame:
+           folds: int = 4, lag: int = 0, k: int = 5) -> pd.DataFrame:
     """Every candidate one at a time against the same baseline; a table sorted by R^2 gain with the retain flag."""
     rows = []
     for c in candidates.columns:
-        r = incremental_value(candidates[c], labels, state_score, target, folds=folds, lag=lag)
+        r = incremental_value(candidates[c], labels, state_score, target, folds=folds, lag=lag, k=k)
         r["feature"] = c
         r["retain"] = retain(r, cfg)
         rows.append(r)
-    cols = ["feature", "n", "r2_base", "delta_r2", "folds_r2_up", "transition_gain", "folds_transition_up", "beta_mean", "retain"]
+    cols = ["feature", "n", "n_transitions", "r2_base", "delta_r2", "folds_r2_up", "transition_gain", "folds_transition_up", "beta_mean", "retain"]
     return pd.DataFrame(rows).reindex(columns=cols).sort_values("delta_r2", ascending=False).reset_index(drop=True)

@@ -13,3 +13,8 @@ phase3:
   min_improvement: 0.0            # out-of-sample MSE improvement over unconditional must be positive
   min_rank_ic: 0.0                # Spearman between predicted and realised must be positive
   calib_slope: [0.5, 1.5]         # realised-on-predicted slope within this range
+
+phase4_leading:                   # Gate 4: a leading feature (and the pressure index built from the retained ones) has incremental value
+  min_delta_r2: 0.005             # out-of-sample R^2 gain of the forward outcome beyond named state + continuous state score
+  min_transition_gain: 0.002      # out-of-sample transition log-likelihood gain per transition (nats) through the tilt
+  min_folds_up: 3                 # ... each positive in at least this many of the walk-forward folds (of 4)
