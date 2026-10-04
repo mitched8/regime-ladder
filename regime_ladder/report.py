@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from .ladder import GROUP  # noqa: E402
 
-COLOURS = {"carry": "#3B6FD4", "rising": "#2EAE7A", "transition": "#2EAE7A", "crisis": "#E8743B",
-           "normalising": "#8B5CF6", "settling": "#0EA5E9", "ALL": "#6B7280"}
+COLOURS = {"carry": "#3B6FD4", "rising": "#2EAE7A", "agitated": "#D4A017", "stressed": "#E8743B", "extreme": "#B91C1C",
+           "normalising": "#8B5CF6", "settling": "#0EA5E9", "transition": "#D4A017", "crisis": "#E8743B", "ALL": "#6B7280"}
 
 
 def _sel(df: pd.DataFrame, group: tuple) -> pd.DataFrame:

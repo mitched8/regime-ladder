@@ -58,7 +58,7 @@ def test_ev_is_linear_in_legs(legs):
     lin = combine.ev_linear(lad, combine.STANDARD_COMBOS["rr_25d"], "x").set_index(["regime", "h"])["mean"]
     direct = lad[lad.archetype == "rr_25d"].set_index(["regime", "h"])["mean"]
     assert np.allclose(direct.values, lin.reindex(direct.index).values)
-    sc = combine.screen(lad, {"rr": combine.STANDARD_COMBOS["rr_25d"], "atm": {"straddle_atm": 1.0}}, "crisis", 5)
+    sc = combine.screen(lad, {"rr": combine.STANDARD_COMBOS["rr_25d"], "atm": {"straddle_atm": 1.0}}, "stressed", 5)
     assert list(sc.columns) == ["combination", "pair", "tenor_days", "ev_linear", "episodes"] and len(sc) == 2
 
 

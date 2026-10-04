@@ -30,12 +30,12 @@ def test_state_means_average_to_overall_mean(world):
     assert np.allclose(recon.dropna(), prof.loc[recon.dropna().index, "all_mean"], atol=1e-9)
 
 
-def test_profile_separates_crisis_on_skew_and_wings(world):
+def test_profile_separates_stressed_on_skew_and_wings(world):
     _, ch, lab = world
     prof = profile.state_profile(ch, lab)
-    top = set(profile.distinguishing(prof, "crisis", 3).index)
+    top = set(profile.distinguishing(prof, "stressed", 3).index)
     assert top & {"rr_level", "fly_level", "term_slope"}
-    assert profile.describe(prof, "crisis").startswith("crisis ·")
+    assert profile.describe(prof, "stressed").startswith("stressed ·")
 
 
 def test_today_placement_percentiles(world):

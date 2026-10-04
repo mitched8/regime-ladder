@@ -1,6 +1,6 @@
 """CLI.  python -m regime_ladder {synth,check,labels,ladder,evaluate,validate,demo} ...
 
-`demo` runs the whole pipeline on synthetic data — calibrated five-state labels, ladder, profile,
+`demo` runs the whole pipeline on synthetic data — calibrated six-state labels, ladder, profile,
 sub-state discovery, gates — and writes a card. It is the smoke test for a fresh environment.
 """
 from __future__ import annotations
@@ -26,20 +26,28 @@ def _forward_pnl_target(td: pd.DataFrame, archetype: str, h: int = 5) -> pd.Seri
 
 
 def make_labels(market: pd.DataFrame, cfg: dict, pair: str, target: pd.Series | None = None):
-    """Composite -> (calibrated) five- or three-state labels. Returns (label frame, label series, spec)."""
+    """Composite -> (calibrated) six-, six-plus-extreme- or three-state labels. Returns (label frame, series, spec).
+
+    `cfg["labeller"]["states"]`: 6 (level x direction), "6x" (plus the extreme band, merged by the
+    episode rule when rare), 3 (level only), or "auto" (whichever partition scores best on the target).
+    """
     c = cfg["labeller"]
     f = features.build(market, names=c["features"])
     comp = labels.composite(f)
     if c.get("calibrate") and target is not None:
-        cal = labels.calibrate_states(comp, target.reindex(comp.index), min_episodes=c["min_episodes"],
-                                      max_switches_per_year=c["max_switches_per_year"])
-        spec = cal["spec5"] if c["states"] == 5 else cal["spec3"]
-        spec = spec or cal["spec"]
+        lvl_col = c.get("level_target", "atm_1m")
+        level_target = market[lvl_col].shift(-int(c.get("level_horizon", 5))).reindex(comp.index) if lvl_col in market else None
+        cal = labels.calibrate_states(comp, target.reindex(comp.index), level_target=level_target,
+                                      min_episodes=c["min_episodes"], max_switches_per_year=c["max_switches_per_year"])
+        want = str(c.get("states", "auto"))
+        spec = (cal["specs"].get(want) if want != "auto" else None) or cal["spec"]
     else:
         sc = labels.ewma(comp, c["halflife"])
         sd = float(labels.direction_score(sc).std())
-        spec = dict(halflife=c["halflife"], b1=c["b1"], b2=c["b2"], delta=c["delta"], partition=str(c["states"]),
-                    dir_window=5, d_up=c["dir_k"] * sd, d_down=-c["dir_k"] * sd, delta_d=0.2 * c["dir_k"] * sd)
+        part = str(c.get("states", 6)); part = "6" if part == "auto" else part
+        spec = dict(halflife=c["halflife"], bounds=tuple(c["bounds"]), delta=c["delta"], partition=part,
+                    dir_window=5, d_up=c["dir_k"] * sd, d_down=-c["dir_k"] * sd, delta_d=0.2 * c["dir_k"] * sd,
+                    extreme_merged=False)
     lab_s = labels.apply_spec(comp, spec)
     return schema.labels_frame(pair, lab_s.index, lab_s.values), lab_s, spec
 
@@ -98,7 +106,7 @@ def cmd_evaluate(a):
     cfg = _cfg(a.config)
     td = schema.coerce(pd.read_parquet(a.td)); lab = pd.read_parquet(a.labels)
     cum = ladder.attach_entry_labels(ladder.cumulative(td, cfg["horizons"]), lab)
-    wf = evaluate.walk_forward(cum, n_splits=cfg["eval"]["n_splits"])
+    wf = evaluate.walk_forward(cum, n_splits=cfg["eval"]["n_splits"], kappa=cfg["eval"].get("kappa", 0.0))
     Path(a.out).mkdir(parents=True, exist_ok=True); wf.to_csv(Path(a.out) / "walk_forward.csv", index=False)
     g3 = gates.gate_phase3(wf, gates.load_gates(a.gates)); gates.write_result(g3, Path(a.out) / "gate_phase3.json")
     print(wf.to_string(index=False, float_format=lambda v: f"{v:+.3f}")); print("phase3 gate:", g3["pass"])
@@ -130,7 +138,7 @@ def cmd_demo(a):
     acc = (lab_s.values == m["state_true"].values).mean()
     print(f"states: {spec['partition']} · agreement with true state {acc:.0%} · switches/yr {labels.switches(lab_s) / (len(m) / 252):.0f} · episodes {labels.episodes(lab_s)}")
     cum, lad, inc, split = _run_ladder(td, lab, cfg)
-    wf = evaluate.walk_forward(cum, n_splits=cfg["eval"]["n_splits"])
+    wf = evaluate.walk_forward(cum, n_splits=cfg["eval"]["n_splits"], kappa=cfg["eval"].get("kappa", 0.0))
     # profile and discovery
     ch = profile.characteristics(m, pcfg); prof = profile.state_profile(ch, lab_s)
     today = lab_s.iloc[-1]

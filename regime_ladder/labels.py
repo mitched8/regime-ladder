@@ -1,39 +1,45 @@
-"""Regime labelling: level x direction -> a small set of named states, with calibration.
+"""Regime labelling: level x direction -> named states, with calibration (the state finder).
 
-Level: a composite stress score, smoothed, cut at two boundaries with hysteresis -> low/mid/high.
-Direction: the smoothed score's slope, cut at two thresholds with hysteresis -> down/flat/up.
-A partition table maps (level, direction) to a named state; "keep" means stay in the previous
-state (used for the ambiguous mid/flat cell). The labeller is a forward loop, so labels are
-point-in-time by construction.
+Level: a composite stress score, smoothed, cut at k ordered boundaries with hysteresis ->
+low / mid / high (three bands) or low / mid / high / extreme (four bands).
+Direction: the smoothed score's slope, cut at two thresholds with hysteresis -> down / flat / up.
+A partition table maps (level, direction) — and where it matters the previous state — to a named
+state. Six named states: carry, rising, agitated, stressed, normalising, settling. The optional
+fourth band `extreme` is the tail; it is kept as a state only if it has enough episodes to
+condition on, otherwise it is merged into stressed for the ladder and surfaced as a flag.
 
-`calibrate_states` is the state finder: given the score history and a forward target (forward
-realised vol, forward surface change, or forward archetype outcome), it estimates boundaries by
-regression kink, direction thresholds from the slope distribution, chooses smoothing and
-hysteresis by out-of-sample separation of the target, and compares the 3-state (level only) and
-5-state (level x direction) partitions on the same criterion. It returns a state spec and a
-report; it does not decide for you.
+`calibrate_states` is the state finder: on a training window it step-fits the level boundaries on
+a forward vol level, sets the extreme bound as a tail quantile, sets direction thresholds from the
+slope distribution, chooses smoothing and hysteresis by out-of-sample separation of forward P&L
+under a switch budget, and compares partitions: "3" (level only), "6" (level x direction, three
+bands), "6x" (four bands, extreme kept or merged by the episode rule). It returns a spec and a
+report; the owner decides.
 """
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
-LEVELS = ("low", "mid", "high")
+LEVELS3 = ("low", "mid", "high")
+LEVELS4 = ("low", "mid", "high", "extreme")
 DIRS = ("down", "flat", "up")
-STATES5 = ("carry", "rising", "crisis", "normalising", "settling")
+STATES6 = ("carry", "rising", "agitated", "stressed", "normalising", "settling")
 STATES3 = ("carry", "transition", "crisis")
+EXTREME = "extreme"
+ALL_STATES = STATES6 + (EXTREME,)
 
-# (level, direction) -> state, or a dict keyed by the previous state ("_" = default). "keep" = stay.
-PARTITION5 = {
+# (level, direction) -> state, or a dict keyed by previous state ("_" = default). "keep" = stay.
+PARTITION6 = {
     ("low", "flat"): "carry",
     ("low", "up"): "rising",
-    ("low", "down"): {"carry": "carry", "_": "settling"},                       # carry drifting down is still carry
-    ("mid", "flat"): "keep",
-    ("mid", "up"): {"crisis": "crisis", "normalising": "crisis", "_": "rising"},  # re-acceleration from a fading crisis
-    ("mid", "down"): {"crisis": "normalising", "normalising": "normalising", "carry": "keep", "_": "settling"},
-    ("high", "up"): "crisis", ("high", "flat"): "crisis", ("high", "down"): "normalising",
+    ("low", "down"): {"carry": "carry", "_": "settling"},                          # carry drifting down is still carry
+    ("mid", "flat"): "agitated",                                                    # elevated, choppy, going nowhere: a state, not a transit lounge
+    ("mid", "up"): {"stressed": "stressed", "normalising": "stressed", "extreme": "stressed", "_": "rising"},
+    ("mid", "down"): {"stressed": "normalising", "normalising": "normalising", "extreme": "normalising", "carry": "keep", "_": "settling"},
+    ("high", "up"): "stressed", ("high", "flat"): "stressed", ("high", "down"): "normalising",
+    ("extreme", "up"): EXTREME, ("extreme", "flat"): EXTREME, ("extreme", "down"): EXTREME,
 }
-PARTITION3 = {(lv, d): {"low": "carry", "mid": "transition", "high": "crisis"}[lv] for lv in LEVELS for d in DIRS}
+PARTITION3 = {(lv, d): {"low": "carry", "mid": "transition", "high": "crisis", "extreme": "crisis"}[lv] for lv in LEVELS4 for d in DIRS}
 
 
 # ----------------------------------------------------------------------------- primitives
@@ -48,44 +54,51 @@ def composite(features: pd.DataFrame, weights: dict | None = None) -> pd.Series:
 
 
 def direction_score(score: pd.Series, window: int = 5) -> pd.Series:
-    """Slope of the smoothed score, in score points per day."""
     return (score - score.shift(window)) / window
 
 
-def _three_way(x: pd.Series, lo: float, hi: float, delta: float, names) -> pd.Series:
-    """Hysteresis labeller onto three ordered classes: below lo, between, above hi."""
-    out, state = [], 1
+def ordered_labels(x: pd.Series, bounds, delta: float, names) -> pd.Series:
+    """Hysteresis labeller onto len(bounds)+1 ordered classes; start in the lowest class."""
+    bounds = list(bounds)
+    out, state = [], 0
     for v in x.values:
         if not np.isnan(v):
-            if state == 0 and v > lo + delta:
-                state = 1
-            if state == 1:
-                if v > hi + delta:
-                    state = 2
-                elif v < lo - delta:
-                    state = 0
-            elif state == 2 and v < hi - delta:
-                state = 1
+            while state < len(bounds) and v > bounds[state] + delta:
+                state += 1
+            while state > 0 and v < bounds[state - 1] - delta:
+                state -= 1
         out.append(names[state])
     return pd.Series(out, index=x.index)
 
 
-def threshold_labels(score: pd.Series, b1: float, b2: float, delta: float = 0.0, names=STATES3) -> pd.Series:
-    """Level-only labels (the 3-state design). Kept for the benchmark and for tests."""
-    s = _three_way(score, b1, b2, delta, names)
-    # start in the lowest class, as before
-    return s.rename("regime")
-
-
-def level_labels(score, b1, b2, delta=0.0):
-    return _three_way(score, b1, b2, delta, LEVELS)
+def level_labels(score, bounds, delta=0.0):
+    bounds = list(bounds)
+    return ordered_labels(score, bounds, delta, LEVELS4 if len(bounds) == 3 else LEVELS3)
 
 
 def direction_labels(dscore, d_down, d_up, delta=0.0):
-    return _three_way(dscore, d_down, d_up, delta, DIRS)
+    out, state = [], 1
+    for v in dscore.values:
+        if not np.isnan(v):
+            if state == 0 and v > d_down + delta:
+                state = 1
+            if state == 1:
+                if v > d_up + delta:
+                    state = 2
+                elif v < d_down - delta:
+                    state = 0
+            elif state == 2 and v < d_up - delta:
+                state = 1
+        out.append(DIRS[state])
+    return pd.Series(out, index=dscore.index)
 
 
-def two_axis_labels(level: pd.Series, direction: pd.Series, partition: dict = PARTITION5, start: str = "carry") -> pd.Series:
+def threshold_labels(score: pd.Series, b1: float, b2: float, delta: float = 0.0, names=STATES3) -> pd.Series:
+    """Level-only three-state labels (the benchmark design)."""
+    return ordered_labels(score, [b1, b2], delta, names).rename("regime")
+
+
+def two_axis_labels(level: pd.Series, direction: pd.Series, partition: dict = PARTITION6, start: str = "carry") -> pd.Series:
     out, prev = [], start
     for lv, d in zip(level.values, direction.values):
         s = partition.get((lv, d), "keep")
@@ -96,22 +109,58 @@ def two_axis_labels(level: pd.Series, direction: pd.Series, partition: dict = PA
     return pd.Series(out, index=level.index, name="regime")
 
 
-def estimate_breaks(score: pd.Series, target: pd.Series, grid: np.ndarray | None = None, min_gap: float = 10.0) -> tuple[float, float]:
-    """Two-kink piecewise-linear fit of target on score; returns the SSE-minimising (b1, b2)."""
-    df = pd.concat([score.rename("s"), target.rename("y")], axis=1).dropna()
+def merge_rare(labels: pd.Series, rare: str = EXTREME, into: str = "stressed", min_episodes: int = 5) -> tuple[pd.Series, dict]:
+    """Merge a rare state into its parent for the ladder if it has too few episodes; report what happened."""
+    ep = episodes(labels)
+    n = ep.get(rare, 0)
+    if 0 < n < min_episodes:
+        return labels.replace({rare: into}), {"merged": True, "rare_episodes": n, "rare_days": int((labels == rare).sum())}
+    return labels, {"merged": False, "rare_episodes": n, "rare_days": int((labels == rare).sum())}
+
+
+def estimate_breaks(score: pd.Series, target: pd.Series, n_breaks: int = 2, min_share: float = 0.08,
+                    grid_n: int = 40) -> tuple:
+    """Step fit: the n_breaks boundaries on `score` whose bands best explain `target` by band means
+    (SSE-minimising piecewise-CONSTANT fit, every band holding at least `min_share` of the days).
+
+    This is the estimator consistent with how bands are used downstream — the ladder conditions on
+    band means — so it places boundaries at the steps between bands. A piecewise-linear (kink) fit
+    does not: it puts its breaks at the ends of a ramp, not in the middle of it.
+    """
+    df = pd.concat([score.rename("s"), target.rename("y")], axis=1).dropna().sort_values("s")
     s, y = df["s"].values, df["y"].values
-    grid = grid if grid is not None else np.quantile(s, np.linspace(0.1, 0.9, 33))
-    best, best_sse = (np.nan, np.nan), np.inf
-    for i, b1 in enumerate(grid):
-        for b2 in grid[i + 1:]:
-            if b2 - b1 < min_gap:
-                continue
-            X = np.column_stack([np.ones_like(s), s, np.maximum(s - b1, 0), np.maximum(s - b2, 0)])
-            beta, *_ = np.linalg.lstsq(X, y, rcond=None)
-            sse = float(((y - X @ beta) ** 2).sum())
-            if sse < best_sse:
-                best, best_sse = (float(b1), float(b2)), sse
+    n = len(s)
+    if n < 50:
+        return None
+    cs, cs2 = np.concatenate([[0.0], np.cumsum(y)]), np.concatenate([[0.0], np.cumsum(y ** 2)])
+    grid = np.quantile(s, np.linspace(min_share, 1 - min_share, grid_n))
+    cuts = np.searchsorted(s, grid)
+    min_n = int(min_share * n)
+
+    def sse(a, b):
+        tot = cs[b] - cs[a]
+        return (cs2[b] - cs2[a]) - tot * tot / (b - a)
+
+    best, best_sse = None, np.inf
+    for combo in _combinations(range(len(cuts)), n_breaks):
+        pts = [0] + [int(cuts[c]) for c in combo] + [n]
+        if min(np.diff(pts)) < min_n:
+            continue
+        v = sum(sse(pts[i], pts[i + 1]) for i in range(len(pts) - 1))
+        if v < best_sse:
+            best, best_sse = tuple(float(grid[c]) for c in combo), v
     return best
+
+
+def _combinations(seq, k):
+    from itertools import combinations
+    return combinations(seq, k)
+
+
+def extreme_bound(score: pd.Series, q: float = 0.975) -> float:
+    """The extreme band is a tail by definition, not a step: its lower bound is a training-window quantile
+    of the smoothed score. Whether it survives as a state is decided by the episode rule (`merge_rare`)."""
+    return float(score.quantile(q))
 
 
 def switches(labels: pd.Series) -> int:
@@ -119,7 +168,7 @@ def switches(labels: pd.Series) -> int:
 
 
 def transition_matrix(labels: pd.Series, names=None, prior_strength: float = 0.0, stickiness: float = 0.95) -> pd.DataFrame:
-    names = list(names) if names is not None else list(dict.fromkeys(n for n in STATES5 + STATES3 if n in set(labels))) or sorted(set(labels))
+    names = list(names) if names is not None else list(dict.fromkeys(n for n in ALL_STATES + STATES3 if n in set(labels))) or sorted(set(labels))
     idx = {n: i for i, n in enumerate(names)}
     k = len(names)
     C = np.zeros((k, k))
@@ -152,8 +201,8 @@ def episodes(labels: pd.Series) -> dict:
 
 # ----------------------------------------------------------------------------- the state finder
 def oos_separation(labels: pd.Series, target: pd.Series, folds: int = 4) -> float:
-    """Out-of-sample R^2 of the forward target on state dummies: state means from the training
-    part of each time-ordered fold, applied to the test part. Negative means worse than the mean."""
+    """Out-of-sample R^2 of the forward target on state dummies: means from the training part of each
+    time-ordered fold applied to its test part. Negative means worse than the unconditional mean."""
     df = pd.concat([labels.rename("s"), target.rename("y")], axis=1).dropna()
     n = len(df)
     cuts = np.linspace(int(0.4 * n), n, folds + 1).astype(int)
@@ -168,45 +217,62 @@ def oos_separation(labels: pd.Series, target: pd.Series, folds: int = 4) -> floa
 
 
 def apply_spec(raw_score: pd.Series, spec: dict) -> pd.Series:
-    """Labels from a raw (unsmoothed) composite and a spec returned by calibrate_states."""
+    """Labels from a raw (unsmoothed) composite and a spec from calibrate_states. Applies the merge rule."""
     sc = ewma(raw_score, spec["halflife"])
-    lv = level_labels(sc, spec["b1"], spec["b2"], spec["delta"])
+    lv = level_labels(sc, spec["bounds"], spec["delta"])
     if spec["partition"] == "3":
         return two_axis_labels(lv, pd.Series("flat", index=sc.index), PARTITION3)
     d = direction_labels(direction_score(sc, spec["dir_window"]), spec["d_down"], spec["d_up"], spec["delta_d"])
-    return two_axis_labels(lv, d, PARTITION5)
+    lab = two_axis_labels(lv, d, PARTITION6)
+    if spec.get("extreme_merged"):
+        lab = lab.replace({EXTREME: "stressed"})
+    return lab
 
 
-def calibrate_states(raw_score: pd.Series, target: pd.Series, halflives=(2, 3, 5), deltas=(0, 2, 3, 5),
-                     dir_ks=(0.5, 0.75, 1.0), dir_window: int = 5, folds: int = 4, min_episodes: int = 5,
-                     max_switches_per_year: float = 30.0, r2_tolerance: float = 0.015) -> dict:
-    """Estimate boundaries, direction thresholds, smoothing and hysteresis; compare 3 vs 5 states.
+def calibrate_states(raw_score: pd.Series, target: pd.Series, level_target: pd.Series | None = None,
+                     halflives=(2, 3, 5), deltas=(0, 2, 3, 5), dir_ks=(0.5, 0.75, 1.0), dir_window: int = 5,
+                     folds: int = 4, min_episodes: int = 5, max_switches_per_year: float = 30.0,
+                     r2_tolerance: float = 0.015, try_extreme: bool = True, extreme_quantile: float = 0.975) -> dict:
+    """Estimate boundaries, direction thresholds, smoothing and hysteresis; compare partitions 3 / 6 / 6x.
 
-    Call this on a training window only. The returned spec is applied forward with `apply_spec`.
-    `target` is a forward-looking series aligned to the decision date (e.g. realised vol over the
-    next 21 days); it is used only to score candidates, never to label.
+    Two targets, two jobs. LEVEL boundaries are a vol-surface fact — where the surface clusters — so
+    they are step-fitted on `level_target` (default: a forward vol level such as ATM a week ahead,
+    available on the whole price history, not just the backtested window). PARTITION, direction
+    thresholds, smoothing and hysteresis are a P&L fact, so they are chosen by out-of-sample
+    separation of `target` (forward archetype P&L). Fitting level bounds on P&L fails where two bands
+    earn alike for opposite reasons (stressed earns, normalising loses: the high band looks like the
+    mid band on P&L and the boundary is lost). If `level_target` is None, `target` is used for both.
+
+    Call on a training window only; apply forward with `apply_spec`. Targets are forward outcomes
+    aligned to the decision date, used only to score candidates, never to label.
     """
     years = max(1e-9, len(raw_score) / 252)
+    level_target = target if level_target is None else level_target
     report = []
     for hl in halflives:
         sc = ewma(raw_score, hl)
-        b1, b2 = estimate_breaks(sc, target)
+        b2 = estimate_breaks(sc, level_target, 2)
+        b3 = (b2 + (extreme_bound(sc, extreme_quantile),)) if (try_extreme and b2) else None
         ds = direction_score(sc, dir_window)
         sd = float(ds.std())
         for delta in deltas:
-            lv = level_labels(sc, b1, b2, delta)
-            l3 = two_axis_labels(lv, pd.Series("flat", index=sc.index), PARTITION3)
-            cands = [("3", 0.0, 0.0, l3)]
+            lv3 = level_labels(sc, b2, delta)
+            cands = [("3", 0.0, 0.0, b2, two_axis_labels(lv3, pd.Series("flat", index=sc.index), PARTITION3), {})]
+            lv4 = level_labels(sc, b3, delta) if b3 else None
             for k in dir_ks:
                 d_up, delta_d = k * sd, 0.2 * k * sd
                 d = direction_labels(ds, -d_up, d_up, delta_d)
-                cands.append(("5", k, delta_d, two_axis_labels(lv, d, PARTITION5)))
-            for part, k, delta_d, lab in cands:
+                cands.append(("6", k, delta_d, b2, two_axis_labels(lv3, d, PARTITION6), {}))
+                if lv4 is not None:
+                    lab, info = merge_rare(two_axis_labels(lv4, d, PARTITION6), min_episodes=min_episodes)
+                    cands.append(("6x", k, delta_d, b3, lab, info))
+            for part, k, delta_d, bounds, lab, info in cands:
                 ep = episodes(lab)
-                report.append(dict(halflife=hl, delta=delta, partition=part, dir_k=k, b1=b1, b2=b2, d_up=k * sd, d_down=-k * sd,
-                                   delta_d=delta_d, dir_window=dir_window, oos_r2=oos_separation(lab, target, folds),
-                                   switches=switches(lab), switches_per_year=switches(lab) / years,
-                                   min_episodes=min(ep.values()), episodes=ep))
+                report.append(dict(halflife=hl, delta=delta, partition=part, dir_k=k, bounds=tuple(bounds), b1=bounds[0], b2=bounds[1],
+                                   d_up=k * sd, d_down=-k * sd, delta_d=delta_d, dir_window=dir_window,
+                                   oos_r2=oos_separation(lab, target, folds), switches=switches(lab), switches_per_year=switches(lab) / years,
+                                   min_episodes=min(ep.values()), episodes=ep, extreme_merged=info.get("merged", False),
+                                   extreme_episodes=info.get("rare_episodes", 0), extreme_days=info.get("rare_days", 0)))
     rep = pd.DataFrame(report)
     ok = rep[(rep.min_episodes >= min_episodes) & (rep.switches_per_year <= max_switches_per_year)]
     if ok.empty:
@@ -216,9 +282,10 @@ def calibrate_states(raw_score: pd.Series, target: pd.Series, halflives=(2, 3, 5
         if df.empty:
             return None
         top = df.oos_r2.max()
-        return dict(df[df.oos_r2 >= top - r2_tolerance].sort_values("switches").iloc[0])  # near-best, fewest switches
+        return dict(df[df.oos_r2 >= top - r2_tolerance].sort_values("switches").iloc[0])
 
-    best3, best5 = pick(ok[ok.partition == "3"]), pick(ok[ok.partition == "5"])
-    spec = best5 if (best5 and (not best3 or best5["oos_r2"] >= best3["oos_r2"])) else best3
-    return {"spec": spec, "spec3": best3, "spec5": best5, "report": rep,
-            "best3_r2": best3["oos_r2"] if best3 else np.nan, "best5_r2": best5["oos_r2"] if best5 else np.nan}
+    specs = {p: pick(ok[ok.partition == p]) for p in ("3", "6", "6x")}
+    cands = [s for s in specs.values() if s]
+    spec = max(cands, key=lambda s: s["oos_r2"]) if cands else None
+    return {"spec": spec, "specs": specs, "report": rep,
+            "r2": {p: (s["oos_r2"] if s else np.nan) for p, s in specs.items()}}

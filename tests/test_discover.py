@@ -23,7 +23,7 @@ def test_discovery_recovers_hidden_rising_subtypes(world):
 
 def test_discovery_finds_nothing_where_nothing_is_hidden(world):
     _, ch, lab = world
-    for s in ("carry", "crisis"):
+    for s in ("carry", "stressed"):
         assert discover.discover(ch, lab, s)["k"] == 1
 
 

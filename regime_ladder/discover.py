@@ -2,9 +2,11 @@
 
 Within one named state, cluster days on the standardised characteristics vector. A sub-state
 exists only if (1) a k > 1 model is preferred by BIC, (2) every cluster has at least
-`min_episodes` contiguous runs, and (3) the clustering is stable: models fitted on the first and
-second halves of the state's history agree on at least `stability` of days. Otherwise k = 1 and
-the named state stands alone. Sub-states are descriptive until, separately, conditioning on them
+`min_episodes` contiguous runs, and (3) the clustering is stable: models fitted on two disjoint
+random halves of the state's EPISODES (repeated `n_splits` times) agree on at least `stability` of
+days on average. Splitting by episode rather than by day matters: days inside one episode are
+near-duplicates, so a day-level split would flatter any clustering. Otherwise k = 1 and the named
+state stands alone. Sub-states are descriptive until, separately, conditioning on them
 beats the parent state's ladder out of sample.
 
 Deliberately dependency-free: a small k-means and a BIC proxy for spherical clusters.
@@ -57,8 +59,31 @@ def _match(c_a, c_b):
     return perm
 
 
+def _episode_ids(index: pd.Index, all_days: pd.Index) -> np.ndarray:
+    """Run id of each day of the state: a new run starts wherever the previous calendar day of the state is not the previous day overall."""
+    pos = all_days.get_indexer(index)
+    return np.concatenate([[0], np.cumsum(np.diff(pos) != 1)])
+
+
+def _split_stability(X, ep, k, rng, n_splits):
+    agree = []
+    ids = np.unique(ep)
+    for _ in range(n_splits):
+        a = rng.permutation(ids)[: len(ids) // 2]
+        ma = np.isin(ep, a)
+        if ma.sum() < 5 * k or (~ma).sum() < 5 * k:
+            continue
+        _, ca, _ = _kmeans(X[ma], k, rng)
+        _, cb, _ = _kmeans(X[~ma], k, rng)
+        perm = _match(ca, cb)
+        pa = ((X[:, None, :] - ca[None]) ** 2).sum(-1).argmin(1)
+        pb = ((X[:, None, :] - cb[None]) ** 2).sum(-1).argmin(1)
+        agree.append(float(np.mean([perm[int(x)] == int(y) for x, y in zip(pa, pb)])))
+    return float(np.mean(agree)) if agree else 0.0
+
+
 def discover(chars: pd.DataFrame, labels: pd.Series, state: str, kmax: int = 4, min_episodes: int = 5,
-             stability: float = 0.7, seed: int = 0) -> dict:
+             stability: float = 0.7, n_splits: int = 5, seed: int = 0) -> dict:
     rng = np.random.default_rng(seed)
     days = labels.index[labels == state]
     Xdf = chars.loc[days].dropna()
@@ -68,17 +93,12 @@ def discover(chars: pd.DataFrame, labels: pd.Series, state: str, kmax: int = 4, 
               "bic": {1: _bic(X, float(((X - X.mean(0)) ** 2).sum()), 1)}, "stability": {}, "episodes": {}, "names": {state: state}}
     if len(X) < 20 * kmax:
         return result
-    half = len(X) // 2
+    ep = _episode_ids(Xdf.index, labels.index)
     for k in range(2, kmax + 1):
         lab, c, inertia = _kmeans(X, k, rng)
         result["bic"][k] = _bic(X, inertia, k)
         eps = [_runs(pd.Series(lab == j, index=Xdf.index)) for j in range(k)]
-        la, ca, _ = _kmeans(X[:half], k, rng)
-        lb, cb, _ = _kmeans(X[half:], k, rng)
-        perm = _match(ca, cb)
-        pa = ((X[:, None, :] - ca[None]) ** 2).sum(-1).argmin(1)
-        pb = ((X[:, None, :] - cb[None]) ** 2).sum(-1).argmin(1)
-        agree = float(np.mean([perm[int(a)] == int(b) for a, b in zip(pa, pb)]))
+        agree = _split_stability(X, ep, k, rng, n_splits)
         result["stability"][k] = agree
         result["episodes"][k] = eps
         feasible = min(eps) >= min_episodes and agree >= stability

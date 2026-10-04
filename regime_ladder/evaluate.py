@@ -4,6 +4,12 @@ Walk-forward by entry date: estimate per-regime (and unconditional) means on
 the training window, score the test window. Reports, per horizon:
   mse_uncond, mse_regime, improvement, rank_ic (Spearman), calibration slope.
 
+With kappa > 0 the regime prediction is the SHRUNK mean: each training-window state mean pulled
+toward the unconditional mean with weight n_eff / (n_eff + kappa), n_eff = n / h for daily entries,
+so rare states are scored at what the card would show rather than at their raw sample mean. The
+default kappa=0 scores raw means; `eval.kappa` in the config chooses, and D7 says how kappa itself
+is picked (leave-one-fold-out MSE).
+
 This is the skeleton of the Phase 3 go/no-go. It is intentionally simple:
 expanding windows, no purging beyond the horizon itself. Extend, do not replace.
 """
@@ -23,7 +29,7 @@ def _splits(dates: pd.Series, n_splits: int, min_train_frac: float = 0.4):
         yield u[a], u[b]
 
 
-def walk_forward(cum_lab: pd.DataFrame, n_splits: int = 4, min_train_frac: float = 0.4) -> pd.DataFrame:
+def walk_forward(cum_lab: pd.DataFrame, n_splits: int = 4, min_train_frac: float = 0.4, kappa: float = 0.0) -> pd.DataFrame:
     rows = []
     for gkey, g in cum_lab.groupby(GROUP):
         for h, gh in g.groupby("h"):
@@ -35,7 +41,10 @@ def walk_forward(cum_lab: pd.DataFrame, n_splits: int = 4, min_train_frac: float
                 if len(train) < 20 or len(test) == 0:
                     continue
                 m_u = train["cum_pnl"].mean()
-                m_r = train.groupby("regime")["cum_pnl"].mean()
+                g_r = train.groupby("regime")["cum_pnl"]
+                n_eff = g_r.size() / max(1.0, float(h))
+                w = n_eff / (n_eff + kappa) if kappa > 0 else 1.0
+                m_r = w * g_r.mean() + (1 - w) * m_u
                 preds_u.append(np.full(len(test), m_u))
                 preds_r.append(test["regime"].map(m_r).fillna(m_u).values)
                 ys.append(test["cum_pnl"].values)
