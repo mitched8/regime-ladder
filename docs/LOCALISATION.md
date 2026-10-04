@@ -48,6 +48,21 @@ For the state profile (WU-06b) the same frame also carries the other G10 pairs' 
 `configs/profile.yaml` under the generic names used there (`eq, eq2, rate2y, rate10y, oil, gold,
 dxy, credit, vix, move`); map source tickers to those names in `configs/local.yaml`.
 
+For tags, shocks and leading features (Phase 4) the same frame is enough for the generic
+candidates; three optional additions come from the desk:
+
+- an **event calendar** per pair — scheduled dates known in advance (central bank meetings, major
+  releases, elections) — as a list of dates under `tags.events` / `leading.events` in
+  `configs/local.yaml`; it feeds `event_window` and `event_proximity` and is point-in-time by
+  construction;
+- an **official-comment / rate-check flag** column (boolean by date) for pairs with intervention
+  risk, named in `tags.pairs.<PAIR>.intervention_risk.flag_col`;
+- any **proprietary leading series** — client flow, dealer gamma, the barrier book, positioning —
+  as columns on the frame, each wrapped in the adapter as a function `f(market, asof=None) ->
+  Series` (trailing percentile, trailing normalisation only) and registered in `leading.LEADING`.
+  The truncation test then covers it and the screen scores it against the same baseline as the
+  generic candidates. Nothing in the tracked repo names these series.
+
 Reconciliation of packages (WU-03): where the source also runs RR and fly as packages, compare the
 package's daily P&L with `combine(legs)` under the standard weights, per entry date and age. The
 correlation should be ~1 and the ratio a stable scalar (the package's notional convention). A drift
@@ -74,6 +89,13 @@ archetype_map:            # source name -> scaffold base-leg name (combinations 
   <source>: rr_25d
   <source>: fly_10d
 tenors: [5, 21, 63]       # trading days; any of 1W-1Y
+tags:                     # overrides of configs/default.yaml › tags, per pair
+  events: {<pair>: [<YYYY-MM-DD>, ...]}
+  pairs:
+    <pair>: {intervention_risk: {direction: 1, move_threshold: 0.05, level: null, flag_col: <column>}}
+leading:
+  events: {<pair>: [<YYYY-MM-DD>, ...]}
+  extra_features: [<name>, ...]   # registered in leading.LEADING by the adapter
 ```
 
 ## 4. Archetype conventions (`configs/archetypes.yaml`, tracked, generic)
@@ -96,5 +118,6 @@ the project.
 pytest -q                               # the scaffold is intact
 python -m regime_ladder demo            # end to end on synthetic data
 python -m regime_ladder validate        # intervals recover analytic truth
+python -m regime_ladder demo --energy-beta 3   # the world where stored energy is causal
 # then WU-01 onwards per PLAN.md
 ```

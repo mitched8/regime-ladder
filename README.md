@@ -4,22 +4,30 @@ Research scaffold for **multi-horizon, entry-conditional trade statistics** on o
 given a backtester that reports daily P&L for every historical entry of a structure, estimate what
 a fresh unit of that structure earns over the next 1, 3, 5, 10 and 20 days conditional on the
 market regime on the entry date — with intervals that respect overlap, the outcome distribution,
-and an honest count of the independent episodes behind each number. States are five named
-regions of level × direction (carry, rising, crisis, normalising, settling), calibrated by a state
-finder against forward outcomes; each state carries a profile (spot-vol behaviour, dollar-factor
-share, cross-asset correlations) and may contain discovered, stability-tested sub-states.
+and an honest count of the independent episodes behind each number. States are six named
+regions of level × direction (carry, rising, agitated, stressed, normalising, settling) plus a rare
+extreme band, calibrated by a state finder against forward outcomes; each state carries a profile
+(spot-vol behaviour, dollar-factor share, cross-asset correlations), may be qualified by tags
+(spot-vol correlation sign, event window, pinned, intervention risk) and may contain discovered,
+stability-tested sub-states. Around the ladder sit the fast path and the forward look: shock
+detection (surprise, CUSUM, BOCD), time-varying transitions (a multinomial-logit tilt fitted on the
+k-step likelihood) and leading features built on the stored-energy hypothesis, each retained only
+where it adds out-of-sample value beyond the state.
 
-It is deliberately small (about 2,100 lines including tests), has no dependency on any particular
+It is deliberately small (about 3,479 lines including tests), has no dependency on any particular
 data source, and is validated on synthetic data with analytic ground truth before any real data is
-touched. Site-specific adapters are written locally and never committed.
+touched — including a synthetic world in which stored energy is causal and one in which it is not.
+Site-specific adapters are written locally and never committed.
 
 ## Run
 
 ```
 pip install -e ".[test]"
-pytest -q                          # 54 tests, ~45 s
+pytest -q                          # 95 tests, ~75 s
 python -m regime_ladder demo       # end to end on synthetic data; writes out/demo/card.md
+python -m regime_ladder demo --energy-beta 3    # the world where stored energy drives escalations
 python -m regime_ladder validate   # intervals recover the analytic truth across seeds
+python -m regime_ladder shock|transitions|leading ...   # the Phase 4 pieces on saved frames
 ```
 
 ## Read
@@ -27,10 +35,10 @@ python -m regime_ladder validate   # intervals recover the analytic truth across
 | File | Purpose |
 |---|---|
 | `SPEC.md` | the estimand, assumptions, falsification tests — the contract the agent builds from |
-| `PLAN.md` | work units through the Phase 3 go/no-go, with acceptance criteria and gates |
+| `PLAN.md` | work units through the Phase 3 go/no-go and the Phase 4 leading-feature gate, with acceptance criteria |
 | `docs/MODEL_GUIDE.md` | method, module map, what the synthetic validation shows |
 | `docs/LOCALISATION.md` | how to connect real data through untracked adapters |
-| `docs/framework.html` | the complete framework for a human reader — data, features, five states and the state finder, profiles, sub-state discovery, shock detection, transition probabilities, leading features, the ladder, the path model, validation and gates — with synthetic screenshots and two interactive demos; open in a browser |
+| `docs/framework.html` | the complete framework for a human reader — data, features, six states and the state finder, tags, profiles, sub-state discovery, shock detection, transition probabilities, leading features and stored energy, the ladder, the path model, validation and gates — with synthetic screenshots and two interactive demos; open in a browser |
 | `templates/` | standing rules for the coding agent, builder and reviewer prompts, handoff and decisions templates |
 | `configs/gates.yaml` | pre-registered pass/fail thresholds; owner-only |
 
@@ -43,4 +51,4 @@ choices only the owner makes.
 
 ## Status
 
-Scaffold complete; no real data connected. Start at WU-00 in `PLAN.md`.
+Scaffold complete through Phase 4 (shocks, transitions, leading features); no real data connected. Start at WU-00 in `PLAN.md`.

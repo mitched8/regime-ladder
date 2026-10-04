@@ -1,4 +1,4 @@
-# PLAN — work units through the Phase 3 go/no-go
+# PLAN — work units through the Phase 3 go/no-go and the Phase 4 leading-feature gate
 
 Conventions: one work unit (WU) is one agent session, two at most. Each WU names the only files
 the builder reads, produces named outputs, and is done when its acceptance test passes and
@@ -41,7 +41,8 @@ Status legend: `todo` · `doing` · `review` · `done` · `blocked (see HANDOFF)
 | WU | Goal | Reads | Produces | Acceptance | Model | Status |
 |---|---|---|---|---|---|---|
 | 07 | Features on real data | `features.py`, WU-06 adapter | plots and descriptive stats per feature per pair in `out/features/`; existing feature sub-components wrapped as functions with `asof` and added to `FEATURES` | all registered features pass `test_pit_truncation`; no feature uses a centred or full-sample statistic | routine | todo |
-| 08 | Labeller calibration | `labels.py`, `configs/default.yaml` | composite + EWMA; boundaries by regression kink **inside walk-forward training windows** against forward realised vol; hysteresis chosen on false-switch vs lag; label history per pair; durations, transition matrix, episodes | label history saved with fold boundaries logged; durations vs geometric reported; episodes per regime ≥ 5 or flagged | judgement | todo |
+| 08 | Labeller calibration | `labels.py`, `configs/default.yaml` | composite + EWMA; `calibrate_states` **inside walk-forward training windows**: level bounds step-fitted on forward ATM (whole history), extreme bound as tail quantile, partition 3 / 6 / 6x and hysteresis chosen on forward P&L under the switch budget; label history per pair; durations, transition matrix, episodes; extreme merged or kept by the episode rule | label history saved with fold boundaries logged; durations vs geometric reported; episodes per state ≥ 5 or flagged; D11 closed | judgement | todo |
+| 08d | Tags | `tags.py`, `configs/default.yaml › tags` | corr-sign, pinned, event-window (calendar from the adapter) and, for the configured pairs, intervention-risk tags on the real frame; episode counts per (state, tag) cell; which cells split | all tags pass the truncation test; cell table saved; intervention thresholds per pair recorded in `configs/local.yaml` | routine | todo |
 | 09 | Separation report | `ladder.py`, `gates.py` | ladder at h ≤ 10 with real labels; `out/gate_phase2.json`; plots | gate evaluated and written; sign stability across sub-periods tabulated | routine | todo |
 
 **Gate 2 (owner, 30 min):** separation. Pass → Phase 3. Fail → first look at detection lag (compare label-switch dates with the mark moves), then at feature choice; do not loosen `gates.yaml`.
@@ -55,7 +56,21 @@ Status legend: `todo` · `doing` · `review` · `done` · `blocked (see HANDOFF)
 | 12 | Age-dependence diagnostics | WU-10 outputs, trade-day table | exposure-normalised daily P&L by h, by T−h, by h/T pooled across tenors (raw-dollar version if Greeks not yet available); residual by remaining tenor; conditional on cumulative move since entry | three collapse plots per archetype + one page naming which panel collapses | routine | todo |
 | 13 | Robustness and report | WU-10/11 outputs | leave-one-episode-out; sensitivity to halflife, δ, κ, block length; `docs/PHASE3_REPORT.md` | tables in `out/robustness/`; report drafted; no single episode flips a sign at h ≤ 10 or it is stated | routine | todo |
 
-**Gate 3 (owner + traders, 60 min): go/no-go.** The regime layer is kept only if it beats layers 0 and 1 at h ≤ 10 out of sample. Separate decision: build the Phase 4 path model (needs CR-1 delivered and a surface-override capability from the backtester owners).
+**Gate 3 (owner + traders, 60 min): go/no-go.** The regime layer is kept only if it beats layers 0 and 1 at h ≤ 10 out of sample. Separate decision: build the Phase 5 path model (needs CR-1 delivered and a surface-override capability from the backtester owners).
+
+## Phase 4 — Shocks, transitions, leading features
+
+Runs after Gate 2 (needs labels); does not wait for Gate 3. Everything here is scored against the
+labels the market actually produced and a baseline that already knows the continuous state.
+
+| WU | Goal | Reads | Produces | Acceptance | Model | Status |
+|---|---|---|---|---|---|---|
+| 14 | Shock detectors on real data | `shock.py`, `configs/leading.yaml › shock` | surprise, CUSUM (h calibrated on the first year, ARL per config), BOCD, HAR forecast, shock score per pair in `out/shock/`; lead profile against the labels; alarm dates listed next to the label-switch dates | all four series pass the truncation test on the real frame; `lead_profile` shows `before_up` above `all` or the detector is flagged as coincident, not leading | routine | todo |
+| 15 | Constant matrix and fan | `transitions.py`, `configs/leading.yaml › transitions` | per pair: matrix with sticky prior, implied vs observed durations, the 21-day fan from today's state; `python -m regime_ladder transitions` | duration ratios within 0.6–1.5 or the first-order approximation is flagged for that state | routine | todo |
+| 16 | Leading-feature screen | `leading.py`, `configs/leading.yaml › leading`, WU-06/06b frames | the six generic candidates plus any desk series the owner supplies (flow, dealer gamma, barrier book — wrapped as `asof` functions and registered), each screened one at a time: `out/leading/leading_screen.csv` with both tests, the lagged check, and the retain flag; event calendar filled per pair | every candidate passes the truncation test; screen table reviewed; no candidate added to the pressure index that fails either test | judgement | todo |
+| 17 | Pressure index and Gate 4 | WU-16 outputs, `gates.py` | pressure from the retained features; tilt β per pair; fan with and without the tilt under the declared covariate paths; `out/gate_phase4.json`; the card's leading line | gate evaluated and written; covariate path policy per feature recorded in D19 | routine | todo |
+
+**Gate 4 (owner, 30 min): leading information has incremental value.** Pass → the pressure index enters the card and the Phase 5 path model. Fail → the constant matrix stands and the card says so; do not loosen `gates.yaml`.
 
 ---
 
