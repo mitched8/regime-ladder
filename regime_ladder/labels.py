@@ -167,8 +167,14 @@ def switches(labels: pd.Series) -> int:
     return int((labels.values[1:] != labels.values[:-1]).sum())
 
 
+def state_order(labels) -> list:
+    """The states present, in canonical order (named states, then the three-state names, then anything else)."""
+    present = set(labels)
+    return list(dict.fromkeys(n for n in ALL_STATES + STATES3 if n in present)) + sorted(present - set(ALL_STATES) - set(STATES3))
+
+
 def transition_matrix(labels: pd.Series, names=None, prior_strength: float = 0.0, stickiness: float = 0.95) -> pd.DataFrame:
-    names = list(names) if names is not None else list(dict.fromkeys(n for n in ALL_STATES + STATES3 if n in set(labels))) or sorted(set(labels))
+    names = list(names) if names is not None else state_order(labels)
     idx = {n: i for i, n in enumerate(names)}
     k = len(names)
     C = np.zeros((k, k))

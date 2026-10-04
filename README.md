@@ -28,6 +28,7 @@ python -m regime_ladder demo       # end to end on synthetic data; writes out/de
 python -m regime_ladder demo --energy-beta 3    # the world where stored energy drives escalations
 python -m regime_ladder validate   # intervals recover the analytic truth across seeds
 python -m regime_ladder shock|transitions|leading ...   # the Phase 4 pieces on saved frames
+python -m regime_ladder inspect --market market.parquet [--td trade_days.parquet]   # every derived input, one file each, with a README
 ```
 
 ## Read
@@ -38,6 +39,7 @@ python -m regime_ladder shock|transitions|leading ...   # the Phase 4 pieces on 
 | `PLAN.md` | work units through the Phase 3 go/no-go and the Phase 4 leading-feature gate, with acceptance criteria |
 | `docs/MODEL_GUIDE.md` | method, module map, what the synthetic validation shows |
 | `docs/LOCALISATION.md` | how to connect real data through untracked adapters |
+| `docs/COMPONENTS.md` | how to compute and look at any single component — features, finder, matrix, tags, profiles, shocks, leading features, stored energy — on its own, in a notebook, without the backtester |
 | `docs/framework.html` | the complete framework for a human reader — data, features, six states and the state finder, tags, profiles, sub-state discovery, shock detection, transition probabilities, leading features and stored energy, the ladder, the path model, validation and gates — with synthetic screenshots and two interactive demos; open in a browser |
 | `templates/` | standing rules for the coding agent, builder and reviewer prompts, handoff and decisions templates |
 | `configs/gates.yaml` | pre-registered pass/fail thresholds; owner-only |

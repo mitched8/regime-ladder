@@ -1,4 +1,8 @@
-"""CLI.  python -m regime_ladder {synth,check,labels,ladder,evaluate,validate,shock,transitions,leading,demo} ...
+"""CLI.  python -m regime_ladder {synth,check,labels,ladder,evaluate,validate,shock,transitions,leading,inspect,demo} ...
+
+`inspect` writes every derived input — features, composite, finder table, labels, matrix, tags, characteristics,
+profiles, discovery, shocks, leading features, tilt fits, pressure, fans — one file each, with a README naming
+the function behind each one, so any piece can be looked at and recomputed on its own.
 
 `demo` runs the whole pipeline on synthetic data — calibrated six-state labels, ladder, profile,
 sub-state discovery, gates — and writes a card. It is the smoke test for a fresh environment.
@@ -12,7 +16,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from . import checks, discover, evaluate, features, gates, labels, ladder, leading, profile, report, schema, shock, synth, tags, transitions
+from . import checks, discover, evaluate, features, gates, inspect as inspect_, labels, ladder, leading, profile, report, schema, shock, synth, tags, transitions
 
 
 def _cfg(path):
@@ -146,7 +150,7 @@ def cmd_transitions(a):
     """Constant matrix, duration check, and the fan from today's state — tilted by a pressure series if given."""
     tcfg = _cfg(a.leading_config)["transitions"]
     lab = _labels_series(a.labels)
-    names = [x for x in list(labels.ALL_STATES) + list(labels.STATES3) if x in set(lab)]
+    names = labels.state_order(lab)
     P = labels.transition_matrix(lab, names=names, prior_strength=tcfg["prior_strength"])
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True); P.to_csv(out / "transition_matrix.csv")
     print(P.round(3).to_string()); print(transitions.implied_vs_observed_duration(P, lab).round(1).to_string())
@@ -197,6 +201,17 @@ def cmd_leading(a):
     print("phase4 (leading) gate:", g4["pass"], "· retained:", kept or "none")
 
 
+def cmd_inspect(a):
+    """Every derived input from a market frame (and optionally the trade table), one file each, plus a README."""
+    cfg = _cfg(a.config); pcfg = _cfg(a.profile_config); lcfg = _cfg(a.leading_config); gc = gates.load_gates(a.gates)
+    m = pd.read_parquet(a.market) if a.market.endswith(".parquet") else pd.read_csv(a.market, index_col=0, parse_dates=True)
+    td = schema.coerce(pd.read_parquet(a.td)) if a.td else None
+    target = _forward_pnl_target(td, cfg["labeller"].get("target_archetype", "straddle_atm")) if (td is not None and cfg["labeller"].get("target") == "forward_pnl") else None
+    res = inspect_.dump(m, cfg, pcfg, lcfg, gc, a.pair, a.out, td=td, target=target)
+    print(f"{len(res['files'])} files in {a.out} · today {res['today']} · spec {res['spec']['partition']} bounds {tuple(round(b) for b in res['spec']['bounds'])} · retained leading {res['retained'] or 'none'}")
+    print((Path(a.out) / "README.md").read_text())
+
+
 def cmd_demo(a):
     cfg = _cfg(a.config); pcfg = _cfg(a.profile_config)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
@@ -239,7 +254,7 @@ def cmd_demo(a):
     lcfg = _cfg(a.leading_config)
     sc = shock.shock_score(m, cfg=lcfg["shock"])
     lines.append(f"shock score today {sc['score'].iloc[-1]:.0f}/100 (CUSUM {sc['cusum_pressure'].iloc[-1]:.2f}, BOCD P(short run) {sc['bocd_p_short'].iloc[-1]:.2f})")
-    names = [x for x in labels.ALL_STATES if x in set(lab_s)]
+    names = labels.state_order(lab_s)
     P = labels.transition_matrix(lab_s, names=names, prior_strength=lcfg["transitions"]["prior_strength"])
     hi = [x for x in ("stressed", "extreme") if x in P.index]
     f0 = transitions.fan(P, pd.Series({today: 1.0}), psi_path=np.zeros(21))
@@ -283,6 +298,7 @@ def main(argv=None):
     k = sp.add_parser("shock"); k.add_argument("--market", required=True); k.add_argument("--labels"); k.add_argument("--out", default="out/shock"); k.set_defaults(f=cmd_shock)
     t = sp.add_parser("transitions"); t.add_argument("--labels", required=True); t.add_argument("--pressure"); t.add_argument("--out", default="out/transitions"); t.set_defaults(f=cmd_transitions)
     g = sp.add_parser("leading"); g.add_argument("--market", required=True); g.add_argument("--labels", required=True); g.add_argument("--td"); g.add_argument("--out", default="out/leading"); g.set_defaults(f=cmd_leading)
+    i = sp.add_parser("inspect"); i.add_argument("--market", required=True); i.add_argument("--td"); i.add_argument("--pair", default="EURUSD"); i.add_argument("--out", default="out/inspect"); i.set_defaults(f=cmd_inspect)
     m = sp.add_parser("demo"); m.add_argument("--out", default="out/demo"); m.add_argument("--days", type=int, default=2520); m.add_argument("--seed", type=int, default=0); m.add_argument("--energy-beta", type=float, default=0.0, dest="energy_beta"); m.set_defaults(f=cmd_demo)
     a = p.parse_args(argv); a.f(a)
 

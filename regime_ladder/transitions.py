@@ -26,7 +26,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .labels import ALL_STATES, STATES3, durations, transition_matrix
+from .labels import durations, state_order, transition_matrix
 
 RANK = {"carry": 0.0, "settling": 0.5, "rising": 1.0, "agitated": 1.5, "normalising": 2.0, "stressed": 3.0, "extreme": 4.0,
         "transition": 1.0, "crisis": 2.0}
@@ -129,7 +129,7 @@ def oos_gain(labels: pd.Series, psi: pd.Series, P0: pd.DataFrame | None = None, 
     rows = []
     for a, b in zip(cuts[:-1], cuts[1:]):
         tr, te = labels.iloc[:a], labels.iloc[a - k: b]  # overlap k days so the first test observation is scored
-        names = [s for s in list(ALL_STATES) + list(STATES3) if s in set(labels)]
+        names = state_order(labels)
         P_tr = transition_matrix(tr, names=names, prior_strength=prior_strength) if P0 is None else P0
         fit = fit_tilt(tr, psi, P_tr, k=k, base=base)
         ll1 = loglik(te, psi, P_tr, fit["beta"], k, base, fit["gamma"])

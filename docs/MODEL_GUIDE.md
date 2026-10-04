@@ -29,6 +29,7 @@ construction and within-horizon regime transitions are already in the measured o
 | `gates.py` | reads `configs/gates.yaml`, evaluates pass/fail | set thresholds |
 | `checks.py` | integrity checks on the table and label coverage | research judgements |
 | `report.py` | tables, plots, the per-component card | a UI |
+| `inspect.py` | every derived input from a market frame, one file each, with a README naming the producing function (`python -m regime_ladder inspect`) | anything new; it only calls the modules above |
 
 ## States: what the synthetic world shows
 
