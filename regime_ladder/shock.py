@@ -102,8 +102,10 @@ def cusum(x2: pd.Series, k: float, h: float, null_window: int = 252, reset: bool
     """One-sided CUSUM on squared surprises against a trailing empirical null mean.
     S_t = max(0, S_{t-1} + min(x2_t, clip) - mu0_t - k); alarm when S_t > h; S resets after an alarm.
     Squared surprises are capped at `clip` (default 3 sigma squared): the CUSUM is the detector for a
-    SUSTAINED rise in realised relative to implied, and a single isolated big day must not be able to
-    trip it on its own — that day belongs to the jump channel (`three_sigma`), kept separate on purpose."""
+    SUSTAINED rise in realised relative to implied. The cap bounds any one day's contribution, so from a
+    standing start no isolated day can cross h, and — more important in practice — an extreme day inside
+    the calibration window does not inflate h and blind the detector to the shifts it exists for. The
+    isolated day belongs to the jump channel (`three_sigma`), kept separate on purpose."""
     x2 = x2.clip(upper=clip)
     mu0 = x2.rolling(null_window, min_periods=max(40, null_window // 4)).mean().shift(1)
     S, alarm, s = np.zeros(len(x2)), np.zeros(len(x2), dtype=bool), 0.0
