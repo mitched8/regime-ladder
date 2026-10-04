@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from . import checks, discover, evaluate, features, gates, labels, ladder, profile, report, schema, synth
+from . import checks, discover, evaluate, features, gates, labels, ladder, profile, report, schema, synth, tags
 
 
 def _cfg(path):
@@ -151,6 +151,18 @@ def cmd_demo(a):
         lines.append(f"no stable sub-states within {today} (stability {max(disc['stability'].values()) if disc['stability'] else float('nan'):.2f} < threshold)")
     top = place.loc[profile.distinguishing(prof, today, 3).index]
     lines += [f"{c}: today {r.today:+.2f}, {r.pct_within_state:.0%} percentile within {today}" for c, r in top.iterrows()]
+    # tags: split today's state by spot-vol correlation sign where the cell has enough episodes
+    tcfg = cfg.get("tags", {})
+    tg = tags.build(m, tcfg, "EURUSD")
+    if "corr_sign" in tg:
+        split_lab, tinfo = tags.split_labels_frame(lab, tg["corr_sign"], tcfg.get("min_episodes", 5))
+        kept = [k for k, v in tinfo["EURUSD"].items() if v["kept"]]
+        lines.append(f"tags today: corr_sign={tg['corr_sign'].iloc[-1]} · split cells with enough episodes: {', '.join(kept) or 'none'}")
+        if any(k.startswith(today + tags.SEP) for k in kept):
+            cum_t = ladder.attach_entry_labels(ladder.cumulative(td, cfg["horizons"]), split_lab)
+            lad_t = ladder.ladder(cum_t, split_lab, alpha=cfg["alpha"], ci="hac")
+            g5 = lad_t[(lad_t["archetype"] == "rr_25d") & (lad_t["h"] == 5) & lad_t["regime"].str.startswith(today)]
+            lines.append("rr_25d 5d EV by tag: " + " · ".join(f"{r.regime} {r['mean']:+.2f} (ep {int(r.episodes)})" for _, r in g5.iterrows()))
     g = ("EURUSD", "rr_25d", 21)
     card = report.card_md(lad, inc, split, g, today, profile_lines=lines)
     (out / "card.md").write_text(card); lad.to_csv(out / "ladder.csv", index=False); wf.to_csv(out / "walk_forward.csv", index=False)

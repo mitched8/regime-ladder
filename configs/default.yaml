@@ -24,3 +24,13 @@ labeller:
 eval:
   n_splits: 4                     # walk-forward test windows after a 40% initial training block
   kappa: 0                        # 0 scores raw state means; set to the ladder's kappa to score the shrunk estimate the card shows
+
+tags:                             # qualifiers that split a state's ladder where the (state, tag) cell has enough episodes (tags.py)
+  min_episodes: 5                 # a tagged cell with fewer episodes collapses back to its parent state
+  corr_sign: {window: 21, band: 0.2, delta: 0.05}        # sign of trailing spot-vol correlation: neg / flat / pos
+  pinned: {window: 21, rv_ratio: 0.6, range_ratio: 0.6}  # realised well under implied and spot in a narrow range
+  event_window: {before: 3, after: 1}                    # applied to the `events` calendar below (dates known in advance)
+  events: []                      # scheduled dates (central bank, data, elections); the adapter can fill this per pair
+  pairs:                          # per-pair tags and overrides; USDJPY shows the BoJ-style configuration
+    USDJPY:
+      intervention_risk: {direction: 1, move_window: 21, move_threshold: 0.05, level: null, flag_col: official_comment}

@@ -57,10 +57,10 @@ def direction_score(score: pd.Series, window: int = 5) -> pd.Series:
     return (score - score.shift(window)) / window
 
 
-def ordered_labels(x: pd.Series, bounds, delta: float, names) -> pd.Series:
-    """Hysteresis labeller onto len(bounds)+1 ordered classes; start in the lowest class."""
+def ordered_labels(x: pd.Series, bounds, delta: float, names, start: int = 0) -> pd.Series:
+    """Hysteresis labeller onto len(bounds)+1 ordered classes; starts in class `start` (NaNs keep the class)."""
     bounds = list(bounds)
-    out, state = [], 0
+    out, state = [], start
     for v in x.values:
         if not np.isnan(v):
             while state < len(bounds) and v > bounds[state] + delta:

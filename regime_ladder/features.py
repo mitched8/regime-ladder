@@ -84,4 +84,8 @@ def truncation_agrees(fn, market: pd.DataFrame, cut_at, atol: float = 1e-9, **pa
     cut = fn(market, asof=cut_at, **params)
     a, b = full.align(cut, join="outer")
     both = a.notna() & b.notna()
-    return bool(np.allclose(a[both], b[both], atol=atol) and (a.notna() == b.notna()).all())
+    if pd.api.types.is_numeric_dtype(a):
+        same = np.allclose(a[both].astype(float), b[both].astype(float), atol=atol)
+    else:  # categorical outputs (tags) must agree exactly
+        same = bool((a[both] == b[both]).all())
+    return bool(same and (a.notna() == b.notna()).all())
