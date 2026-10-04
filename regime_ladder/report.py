@@ -122,6 +122,7 @@ def plot_tenor_curve(lad: pd.DataFrame, pair: str, archetype: str, h: int, path:
     ticks = sorted(g["tenor_days"].unique())
     ax.set_xticks(ticks)
     ax.set_xticklabels([TENOR_LABELS.get(int(t), str(int(t)) + "d") for t in ticks])
+    ax.minorticks_off()
     ax.axhline(0, color="#333", lw=0.8)
     ax.set_xlabel("tenor")
     ax.set_ylabel(f"EV at h={h}d per unit vega")
