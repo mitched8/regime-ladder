@@ -9,3 +9,5 @@ adapters/
 configs/local.yaml
 docs/ENVIRONMENT.md
 tests/golden/
+docs/src/_cache/
+docs/src/_fig/
