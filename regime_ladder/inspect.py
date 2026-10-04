@@ -32,7 +32,8 @@ def _w(out: Path, name: str, obj, by: str, what: str, **kw):
 
 
 def dump(market: pd.DataFrame, cfg: dict, pcfg: dict, lcfg: dict, gates_cfg: dict, pair: str, out: str | Path,
-         td: pd.DataFrame | None = None, target: pd.Series | None = None, events=None, target_name: str | None = None) -> dict:
+         td: pd.DataFrame | None = None, target: pd.Series | None = None, events=None, target_name: str | None = None,
+         targets: dict | None = None) -> dict:
     out = Path(out); out.mkdir(parents=True, exist_ok=True); FILES.clear()
     c = cfg["labeller"]
 
@@ -99,10 +100,17 @@ def dump(market: pd.DataFrame, cfg: dict, pcfg: dict, lcfg: dict, gates_cfg: dic
     L = leading.build(market, names=list(lc["features"]), events=events or lc.get("events") or None, **lc["features"])
     _w(out, "leading_features.csv", L, "leading.build(market, names, events, **params)", "every leading feature per day (0..100); stored_energy = gap_pct × complacency / 100")
     gcfg = gates_cfg["phase4_leading"]
-    scr = leading.screen(L, lab, comp, target.reindex(comp.index), gcfg)
-    lagged = leading.screen(L, lab, comp, target.reindex(comp.index), gcfg, lag=int(lc.get("lag_check", 1)))
+    ys = {k: v.reindex(comp.index) for k, v in (targets or {}).items()} or target.reindex(comp.index)
+    hd = lc.get("diag_horizon"); diag = {a: f"{a}_h{hd}" for a in (targets or {}) if hd and f"{a}_h{hd}" in (targets or {})}
+    kw = dict(k=int(lc.get("k", 5)), ks=tuple(lc.get("ks", (10, 21))), feature_targets=lc.get("feature_targets") or {},
+              interact=tuple(lc.get("interact", ("carry", "settling"))) or None, diag_targets=diag)
+    scr = leading.screen(L, lab, comp, ys, gcfg, **kw)
+    lagged = leading.screen(L, lab, comp, ys, gcfg, lag=int(lc.get("lag_check", 1)), holdout_frac=0.0, n_perm=0, **kw)
     scr["delta_r2_lagged"] = scr["feature"].map(lagged.set_index("feature")["delta_r2"])
-    _w(out, "leading_screen.csv", scr, "leading.screen(L, labels, composite, target, gates['phase4_leading'])", "one row per candidate: both retention tests, folds, β, retain", index=False)
+    _w(out, "leading_screen.csv", scr, "leading.screen(L, labels, composite, targets, gates['phase4_leading'], k, ks, feature_targets)",
+       "one row per candidate: outcome test (and its low-band and lagged variants), transition test at the declared k and the diagnostic horizons, hold-out confirmation, retain", index=False)
+    lf = pd.DataFrame([{"feature": c, **leading.lift(L[c], lab, **(lc.get("lift") or {}))} for c in L.columns])
+    _w(out, "leading_lift.csv", lf, "leading.lift(L[c], labels, horizon, quantile)", "event-study form: P(move into the high band within the horizon | feature in its top decile) vs the base rate, with a block-bootstrap interval", index=False)
     cz = (comp - comp.mean()) / comp.std()
     fits = []
     for col in L.columns:
@@ -115,7 +123,7 @@ def dump(market: pd.DataFrame, cfg: dict, pcfg: dict, lcfg: dict, gates_cfg: dic
         _w(out, "tilt_fits.csv", pd.concat(fits), "transitions.oos_gain(labels, psi, k=5, base=composite_z)", "per feature and fold: fitted β (feature) and γ (composite baseline), OOS k-step gain per observation", index=False)
     kept = list(scr.loc[scr["retain"], "feature"])
     use = {k: 1.0 for k in kept} or {col: 1.0 for col in L.columns}
-    psi = leading.pressure(L, use)
+    psi = leading.pressure(L, use, zscore_window=lc.get("pressure_zscore_window"))
     _w(out, "pressure.csv", psi, "leading.pressure(L, weights)", f"pressure index from {'the retained features ' + str(kept) if kept else 'ALL candidates (none retained — illustrative only)'}")
     pg = None
     if kept:

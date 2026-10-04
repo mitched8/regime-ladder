@@ -1,6 +1,6 @@
 # Answer key — for the owner only; never give this to the challenger
 
-All four worlds use the same seed (2,520 days, one pair). The forward target for the finder and the
+All worlds use the same seed (2,520 days, one pair). The forward target for the finder and the
 leading screen is the **noiseless** expected 5-day straddle earn given the true state path. With
 the noisy simulated trades as the target, ten years of one pair did not have the power to retain
 even the true pressure series (delta_r2 0.003–0.004 against a threshold of 0.005). Read that as a
@@ -32,36 +32,60 @@ Genuine findings it should raise in all three worlds (not planted):
   low-vol market. So it is 50 before every move into stressed (those start from rising/agitated) and
   its value is in moves out of the calm states. A good challenger asks where the gain comes from;
   it should not call the 50s a fill error once the owner note explains them.
-  It is retained (delta_r2 0.014 in 4/4 folds, transition gain 0.005 in 3/4) and the pressure index
-  passes Gate 4.
-- Section 8b: its alignment profile is flat (−0.04 to −0.08): no sign of look-ahead. That is the
-  contrast with run 3.
-- The generic `stored_energy` is NOT retained, although the world runs on stored energy: the generic
-  proxy is not close enough to the true rule. A good challenger may note this; it is not an error.
+- It is retained: delta_r2 0.022 (p_perm 0.01, the floor), 4/4 folds; transition gain 0.006 at k=5,
+  4/4 folds. Hold-out: delta_r2 −0.0007 (neutral, inside the guard), transition gain +0.004. Gate 4 passes.
+- Section 8b: its alignment profile is flat (−0.04 to −0.09): no sign of look-ahead. That is the
+  contrast with run 3. Lift is ~1.0: the feature does not precede moves into the high band (it
+  precedes exits from calm), which the challenger should say and which is consistent with §7.
+- The generic `stored_energy` is NOT retained (negative on both tests), although the world runs on
+  stored energy: the generic proxy is not close enough to the true rule. Not an error.
 - Wrong answers: FAIL on look-ahead grounds (there is none); "stored energy has been shown to lead"
-  (only the desk series passed).
+  (only the desk series passed); treating the neutral hold-out R² as a contradiction.
 
 ## Run 2 — `B_null/leading`: expected PASS (the results are right; nothing has value)
 - Same construction of `desk_flow`, but in this world pressure drives nothing. Nothing is retained,
-  Gate 4 fails, delta_r2 for `desk_flow` is negative.
+  Gate 4 fails, delta_r2 for `desk_flow` is negative, p_perm 0.8, lift 0.7 with an interval through 1.
 - Wrong answers: any claim that `desk_flow` or any generic feature is useful; FAIL because the gate
   failed (a failed gate is a valid result).
 
 ## Run 3 — `C_planted/leading`: expected FAIL
 - `desk_flow` is the trailing percentile of 1-week realised vol **ten trading days ahead**, stamped
   on today: a timestamp bug of the kind a desk feed can have. The definitions claim it is trailing.
-- It is retained and Gate 4 passes (pressure gain 0.014 in 4/4 folds): the gates alone do not catch it.
+- It is retained and Gate 4 passes (delta_r2 0.031, p_perm 0.01, transition gain 0.016 in 4/4 folds,
+  hold-out positive on both, lift 1.9): the gates alone do not catch it. Nor does the permutation
+  null — a leaked feature is genuinely aligned with the outcome, just not available in time.
 - The tells, in the order a good challenger finds them:
   1. Section 8b: correlation with future realised vol at k=+10 is **0.99**, against 0.06–0.16 at
      every other offset and |0.0–0.5| for every generic feature. This is decisive.
-  2. Section 2: delta_r2 0.020 and transition gain 0.013 — roughly ten times every other candidate.
-  3. `delta_r2_lagged` (0.022) is not below `delta_r2`: lagging by a day does not hurt, consistent
-     with information that arrives ten days early.
+  2. Section 2: every number is several times every other candidate's.
+  3. `delta_r2_lagged` is not below `delta_r2`: lagging by a day does not hurt, consistent with
+     information that arrives ten days early (supporting, not decisive: the difference is small).
 - A good request: "check the timestamp alignment of desk_flow against its source; rerun with the
   feature shifted forward by 10 days and show section 8b again."
 - Wrong answer: PASS, or any finding that misses the k=+10 alignment.
 
-## Run 4 — `A_energy/states`, `ladder`, `data` (no planted error; what to expect)
+## Run 4 — `D_external/leading`: expected QUESTIONS (a rule problem, not a data problem)
+- `desk_flow` is an exogenous AR(1) that tilts transitions five days after it is observed; nothing
+  in the surface or the path knows it. It is a genuine leader with a clean alignment profile.
+- Under the pre-registered rule it is **not retained**: the 5-day straddle outcome gain is 0.001
+  (p_perm 0.14). Everything else says it matters: transition gain 0.008 at k=5 in 4/4 folds and
+  **0.10 at k=21**; `delta_r2_diag` on the 21-day outcome **0.106** against 0.001 at 5 days; lift
+  1.7 [1.2, 2.2] over 70 signal runs.
+- A good challenger separates the two readings: the data is fine; the declared horizon (5 days) and
+  the both-tests rule are what reject it. It should return QUESTIONS for the owner — re-declare k
+  and/or the outcome horizon, or split retention by product (ladder card vs tilt) — and name D22.
+- Section 8b for `desk_flow` rises gently into the future (to ~0.2 at k=+21) with no spike: the shape of
+  a genuine slow lead, not of a stamping error (compare run 3's 0.99 at one offset). `desk_flow` here is
+  a fixed linear map of the raw series to 0..100, not a full-sample normalisation.
+- Stored energy drives nothing in this world (it is an energy-null): `stored_energy` and `gap_pct`
+  showing lift below 1 and a negative tilt β is the correct null, not a construction error.
+- Signed features are judged on the straddle here because the synthetic set has no RR outcome; the
+  packet says so in its target-substitution line.
+- Wrong answers: FAIL (nothing is wrong with the numbers); PASS with no comment on the contradiction
+  between section 2's first row and sections 2b/8b; calling it look-ahead on the strength of a gentle
+  rise in 8b.
+
+## Run 5 — `A_energy/states`, `ladder`, `data` (no planted error; what to expect)
 - states: warm-up line (features invalid until mid-2015; the 2015 carry share of 0.83 is mostly
   default labels); `normalising` has exactly 5 episodes and 1% of days; ~25 switches a year with
   many 1–2 day runs of agitated (hysteresis may be weak). Durations ratios all within 0.6–1.5

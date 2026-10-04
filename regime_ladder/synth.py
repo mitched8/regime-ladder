@@ -101,10 +101,23 @@ def energy_pressure(gap_z: float, atm: float) -> float:
     return float(np.clip((abs(gap_z) * weak - ENERGY_THRESHOLD), 0.0, 3.0))
 
 
-def _simulate_with_energy(n_days, P, rng, energy_beta):
-    """Sequential simulation: today's pressure (from the path so far) tilts tonight's transition."""
+def external_series(n_days: int, rng, phi: float = 0.9) -> np.ndarray:
+    """An exogenous AR(1) with unit variance: the synthetic stand-in for a series that comes from outside the
+    pair's own surface and path (a cross-market gap, a flow aggregate). It is observed on day t; in the
+    external world it tilts the transition `external_lead` days LATER, so a feature that reads it has a
+    genuine lead and one that reads it late (the C_planted calibration) has none."""
+    e = rng.normal(0, np.sqrt(1 - phi ** 2), n_days); x = np.empty(n_days); x[0] = rng.normal()
+    for t in range(1, n_days):
+        x[t] = phi * x[t - 1] + e[t]
+    return x
+
+
+def _simulate_with_energy(n_days, P, rng, energy_beta, external_beta=0.0, external_lead=5, x_ext=None):
+    """Sequential simulation: today's pressure (from the path so far, plus the lagged external series) tilts
+    tonight's transition."""
     from .transitions import _tilt_array, ranks
     r = ranks(STATES)
+    x_ext = np.zeros(n_days) if x_ext is None else x_ext
     s = np.empty(n_days, dtype=int); s[0] = 0
     sub = np.array(["none"] * n_days, dtype=object); cur = "none"
     z_pair = np.empty(n_days); atm = np.empty(n_days); atm[0] = 7.0; logspot = np.empty(n_days); logspot[0] = np.log(1.10)
@@ -113,7 +126,9 @@ def _simulate_with_energy(n_days, P, rng, energy_beta):
     f_all, u_all, n_all = rng.normal(0, 1, n_days), rng.normal(0, 1, n_days), rng.normal(0, 0.3, n_days)
     z_pair[0] = np.sqrt(w0) * f_all[0] + np.sqrt(1 - w0) * u_all[0]
     for t in range(1, n_days):
-        T = _tilt_array(P, r, np.array([psi[t - 1]]), energy_beta)[0]
+        ext = x_ext[t - 1 - external_lead] if t - 1 - external_lead >= 0 else 0.0
+        eff = energy_beta * psi[t - 1] + external_beta * ext                  # signed: a low reading damps, a high one pushes up
+        T = _tilt_array(P, r, np.array([eff]), 1.0)[0]
         s[t] = rng.choice(len(P), p=T[s[t - 1]])
         st = STATES[s[t]]
         if st in ("rising", "agitated"):
@@ -132,11 +147,16 @@ def _simulate_with_energy(n_days, P, rng, energy_beta):
     return s, sub, z_pair, atm, np.exp(logspot), f_all, psi
 
 
-def simulate_market(n_days: int = 1260, seed: int = 0, P: np.ndarray = DEFAULT_P, energy_beta: float = 0.0) -> pd.DataFrame:
+def simulate_market(n_days: int = 1260, seed: int = 0, P: np.ndarray = DEFAULT_P, energy_beta: float = 0.0,
+                    external_beta: float = 0.0, external_lead: int = 5) -> pd.DataFrame:
+    """`energy_beta` > 0: stored energy (from the path) tilts transitions. `external_beta` > 0: an exogenous
+    AR(1), returned as `external_true`, tilts transitions `external_lead` days after it is observed. Both
+    zero: the plain hidden-Markov world. `external_true` is always returned (pure noise when its beta is 0)."""
     rng = np.random.default_rng(seed)
     dates = pd.bdate_range("2015-01-01", periods=n_days)
-    if energy_beta > 0:
-        s, sub, z_pair, atm, spot, f, psi_true = _simulate_with_energy(n_days, P, rng, energy_beta)
+    x_ext = external_series(n_days, np.random.default_rng(seed + 7919))   # its own stream: the other worlds are unchanged by its presence
+    if energy_beta > 0 or external_beta > 0:
+        s, sub, z_pair, atm, spot, f, psi_true = _simulate_with_energy(n_days, P, rng, energy_beta, external_beta, external_lead, x_ext)
         state = np.array(STATES)[s]
     else:
         psi_true = np.zeros(n_days)
@@ -167,7 +187,7 @@ def simulate_market(n_days: int = 1260, seed: int = 0, P: np.ndarray = DEFAULT_P
     rr25 = np.array([RR_LEVEL[x] for x in state]) + 0.3 * (atm - 9) / 3 + rng.normal(0, 0.15, n_days)
     fly25 = np.array([FLY_LEVEL[x] for x in state]) + rng.normal(0, 0.03, n_days)
     stress = np.array([STRESS_MEAN[x] for x in state]) + 3.0 * (atm - np.array([ATM_TARGET[x] for x in state])) + rng.normal(0, 6.0, n_days)
-    out = {"state_true": state, "subtype_true": sub, "pressure_true": psi_true, "stress": stress, "atm_1m": atm, "atm_1y": atm_1y,
+    out = {"state_true": state, "subtype_true": sub, "pressure_true": psi_true, "external_true": x_ext, "stress": stress, "atm_1m": atm, "atm_1y": atm_1y,
            "rr25_1m": rr25, "fly25_1m": fly25, "spot": spot, "rv_1w": rv[5], "rv_1m": rv[21], "rv_3m": rv[63]}
     for i, g in enumerate(G10):
         lam = 0.5 + 0.1 * i

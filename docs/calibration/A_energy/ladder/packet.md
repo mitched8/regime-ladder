@@ -4,10 +4,10 @@
 |---|---|
 | pair | EURUSD |
 | data | 2015-01-01 to 2024-08-28 (2520 days) |
-| finder / leading target | expected forward 5d straddle P&L given the true state path (synthetic, noiseless) |
-| git commit | d87fd28 |
-| config hash | 3667c35aac |
-| generated | 2026-10-04 15:09 |
+| finder / leading target | expected forward 5d straddle P&L given the true state path (synthetic, noiseless); diagnostic outcome at 21d |
+| git commit | 556ee10 |
+| config hash | ba38712377 |
+| generated | 2026-10-04 17:40 |
 
 ## Definitions
 - Units: P&L is cash per unit of standard notional (per unit of vega at inception once D1 is closed). Horizons h are trading days from entry, capped at the option tenor.

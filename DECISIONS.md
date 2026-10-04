@@ -24,8 +24,11 @@ dated when closed. Gate-threshold changes are recorded here with the reason.
 | D18 | CUSUM false-alarm budget | one alarm per ~4 years (ARL₀ 1000, default); per year (250) | open | | WU-14; `configs/leading.yaml` |
 | D19 | Future-path policy per leading covariate | pressure index: decaying with a 10-day half-life (default) or frozen; calendar features: calendar; anything else: zero | open | | WU-17; a frozen path is a scenario, not a forecast |
 | D20 | Desk-proprietary leading series to screen | none (default); own-book risk measures, aggregated flow statistics, positioning — each wrapped as an `asof` function and registered | open | | WU-16; which series are admissible, and under what aggregation and null rules, is decided by the owner and recorded in the local decisions file alongside `configs/local.yaml`, never here; the tracked repo sees them only as registered functions |
+| D22 | Leading-screen retention rule | (a) both tests must pass (current: outcome ΔR² at 5d AND transition gain at k=5, each in ≥ 3/4 folds, plus the permutation null and the hold-out guard); (b) split by product — outcome test admits a feature to the ladder card, transition test admits it to the tilt; (c) declared transition horizon k = 5 (current) or 10 | open | | the external-leader calibration world (`docs/calibration/D_external`) drives transitions (gain 0.008 at k=5, 0.10 at k=21, lift 1.7) yet adds ~0 to the 5-day straddle outcome, so (a) rejects it; evidence for (b). Change only through `configs/gates.yaml` / `leading.yaml` with a line below |
 | D21 | Forward outcome for the leading screen | forward 5d archetype P&L (default); realised-minus-implied over 21d | open | | WU-16; `configs/leading.yaml › leading.target` |
 
 ## Gate threshold changes
 | Date | Key | Old | New | Reason |
 |---|---|---|---|---|
+| 2026-10-04 | `phase4_leading.n_perm`, `max_p_perm` | — | 100, 0.05 | selection control for a screen over many candidates: the outcome gain must beat a circular-shift null of the feature |
+| 2026-10-04 | `phase4_leading.holdout_frac`, `max_to_holdout` | — | 0.2, 3 | the walk-forward runs on the first 80%; the top 3 retained candidates must not be contradicted on the final 20% (a 2-year window holds 3–4 episodes, so it guards rather than re-proves; the first draft required confirmation and rejected the true series in calibration world A) |

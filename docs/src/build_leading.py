@@ -80,7 +80,7 @@ def fold_r2(feature, lab, comp, target, folds=4):
     df = pd.concat([feature.rename("f"), lab.rename("s"), comp.rename("c"), target.rename("y")], axis=1).dropna()
     ref = df["s"].value_counts().idxmax(); D = pd.get_dummies(df["s"]).astype(float).drop(columns=[ref]).values
     cz_ = ((df["c"] - comp.mean()) / comp.std()).values; base = np.column_stack([np.ones(len(df)), D, cz_, cz_ ** 2]); fz = ((df["f"] - df["f"].mean()) / df["f"].std()).values
-    _, pb = leading._oos_r2(base, df["y"].values, folds, 0.4); _, pf = leading._oos_r2(np.column_stack([base, fz]), df["y"].values, folds, 0.4)
+    _, pb = leading._oos_r2(base, df["y"].values, df.index, folds, 0.4); _, pf = leading._oos_r2(np.column_stack([base, fz]), df["y"].values, df.index, folds, 0.4)
     return np.array(pf) - np.array(pb)
 fig, ax = plt.subplots(figsize=(8, 3.2))
 feats = ["pressure_true", "gap_pct", "stored_energy", "complacency", "jump_cluster_pct", "coherence_pct"]

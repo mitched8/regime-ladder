@@ -102,3 +102,26 @@ turns an `inspect` folder into one markdown packet (definitions, dated runs, com
 results, and for leading features an alignment check against future realised vol). Paste it into a
 separate model session with `templates/CHALLENGER_PROMPT.md`. Leading features need only the market
 frame and labels: run `labels`, `inspect --market ...` and `pack --stage leading`, no backtester.
+
+## Adding a feature
+
+One function, one dict entry, one config line. The function takes the market frame and `asof`, uses
+trailing data only, and returns a Series named after itself:
+
+```python
+def my_feature(market, asof=None, window=63):
+    m = market if asof is None else market.loc[:asof]
+    return rolling_percentile(<something trailing>, 756).rename("my_feature")
+
+leading.LEADING["my_feature"] = my_feature          # or features.FEATURES for a state feature
+# configs/leading.yaml › leading.features: my_feature: {window: 63}
+# optional: feature_targets: {my_feature: rr_25d} if it is signed
+```
+
+From there `tests/test_pit_truncation.py` covers it, the screen reports it, `inspect` writes it and
+`pack` shows it. A desk series goes the same way from the adapter (see `docs/LOCALISATION.md`), and
+the leading packet's alignment check (section 8b) is the first thing to read for one.
+
+The screen itself: `leading.screen(candidates, labels, composite, targets, gates["phase4_leading"])`,
+where each argument may be a dict keyed by pair for the pooled test. `leading.lift(feature, labels)`
+is the event-study view for a sparse feature.

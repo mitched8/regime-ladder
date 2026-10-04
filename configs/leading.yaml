@@ -23,8 +23,21 @@ leading:
     jump_cluster_pct: {window: 21, k: 2.0}
     coupling_shift_pct: {short: 21, long: 126}
     coherence_pct: {window: 21}
+    gap_z_signed: {anchor_window: 120}   # signed stretch; judged on the RR target (feature_targets)
+    drift_t: {window: 60}                # signed one-way drift; same
   events: []                      # scheduled dates known in advance -> event_proximity (0..100); the adapter can fill per pair
   target: forward_pnl             # outcome for the incremental-value test: forward_pnl (archetype's forward 5d earn) | realised_minus_implied
-  target_archetype: straddle_atm
+  target_archetype: straddle_atm  # default outcome (unsigned features)
+  targets: [straddle_atm, rr_25d] # outcomes computed from the trade table when it is given; the first is the default
+  target_horizon: 5               # the forward horizon the outcome test is decided on (trading days)
+  diag_horizon: 21                # a second horizon reported as delta_r2_diag only: a slow build-up shows at 21 before it shows at 5
+  feature_targets:                # a signed feature is judged on a signed earn
+    gap_z_signed: rr_25d
+    drift_t: rr_25d
+  k: 5                            # transition-test horizon that decides retention (declared in advance)
+  ks: [10, 21]                    # further horizons reported as diagnostics (a slow build-up shows at 21 before it shows at 5)
+  interact: [carry, settling]     # delta_r2_low: the feature allowed to act only in these states (energy matters when calm)
+  lift: {horizon: 20, quantile: 0.9}   # event-study row: P(high band within horizon | feature in its top decile) vs base rate
+  pressure_zscore_window: 756     # the pressure index z-scores each retained feature against its trailing window
   lag_check: 1                    # also report value with the feature delayed by this many days
   pressure_weights: null          # null = equal weights over the RETAINED features; or {feature: weight}

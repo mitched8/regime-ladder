@@ -4,10 +4,10 @@
 |---|---|
 | pair | EURUSD |
 | data | 2015-01-01 to 2024-08-28 (2520 days) |
-| finder / leading target | expected forward 5d straddle P&L given the true state path (synthetic, noiseless) |
-| git commit | d87fd28 |
-| config hash | 3667c35aac |
-| generated | 2026-10-04 15:09 |
+| finder / leading target | expected forward 5d straddle P&L given the true state path (synthetic, noiseless); diagnostic outcome at 21d |
+| git commit | 556ee10 |
+| config hash | ba38712377 |
+| generated | 2026-10-04 17:40 |
 
 ## Definitions
 - Units: P&L is cash per unit of standard notional (per unit of vega at inception once D1 is closed). Horizons h are trading days from entry, capped at the option tenor.
@@ -404,20 +404,20 @@ Raw counts-based matrix (no prior):
 ## 9. Tag cells
 | tag | cell | episodes | kept | days |
 |---|---|---|---|---|
+| corr_sign | agitated·neg | 60 | True | 372 |
+| corr_sign | stressed·neg | 14 | True | 138 |
+| corr_sign | normalising·pos | 1 | False | 5 |
+| corr_sign | normalising·neg | 2 | False | 9 |
+| corr_sign | carry·pos | 10 | True | 89 |
+| corr_sign | settling·pos | 9 | True | 43 |
+| corr_sign | settling·neg | 20 | True | 90 |
 | corr_sign | rising·pos | 14 | True | 43 |
 | corr_sign | stressed·pos | 6 | True | 49 |
-| corr_sign | settling·pos | 9 | True | 43 |
-| corr_sign | normalising·neg | 2 | False | 9 |
-| corr_sign | settling·neg | 20 | True | 90 |
-| corr_sign | stressed·neg | 14 | True | 138 |
+| corr_sign | agitated·pos | 24 | True | 285 |
 | corr_sign | carry·neg | 26 | True | 326 |
 | corr_sign | rising·neg | 25 | True | 110 |
-| corr_sign | carry·pos | 10 | True | 89 |
-| corr_sign | agitated·pos | 24 | True | 285 |
-| corr_sign | normalising·pos | 1 | False | 5 |
-| corr_sign | agitated·neg | 60 | True | 372 |
+| pinned | stressed·pinned | 2 | False | 3 |
 | pinned | carry·pinned | 4 | False | 7 |
 | pinned | agitated·pinned | 1 | False | 2 |
-| pinned | stressed·pinned | 2 | False | 3 |
 | pinned | rising·pinned | 2 | False | 8 |
 

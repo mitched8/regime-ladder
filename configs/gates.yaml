@@ -18,3 +18,7 @@ phase4_leading:                   # Gate 4: a leading feature (and the pressure 
   min_delta_r2: 0.005             # out-of-sample R^2 gain of the forward outcome beyond named state + continuous state score
   min_transition_gain: 0.002      # out-of-sample transition log-likelihood gain per transition (nats) through the tilt
   min_folds_up: 3                 # ... each positive in at least this many of the walk-forward folds (of 4)
+  n_perm: 100                     # selection control: permutation null for the outcome gain (circular shifts of the feature, >= 63 days)
+  max_p_perm: 0.05                # ... a retained feature's gain must beat that null at this level
+  holdout_frac: 0.2               # guard: the walk-forward runs on the first 80% of the history; the top 3 retained candidates are then
+  max_to_holdout: 3               # ... tested once on the final 20% and must not be CONTRADICTED there (each test above minus its threshold)

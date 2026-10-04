@@ -172,10 +172,24 @@ def cmd_transitions(a):
     f0.to_csv(out / "fan_constant.csv")
 
 
-def _leading_target(m: pd.DataFrame, lcfg: dict, td_path: str | None) -> pd.Series:
-    if lcfg["target"] == "forward_pnl" and td_path:
-        return _forward_pnl_target(schema.coerce(pd.read_parquet(td_path)), lcfg["target_archetype"])
-    return (m["rv_1m"].shift(-21) - m["atm_1m"]).rename("realised_minus_implied")
+def _leading_targets(m: pd.DataFrame, lcfg: dict, td: pd.DataFrame | None) -> dict:
+    """Named forward outcomes for the screen: one per archetype in `targets` from the trade table, or the
+    surface fallback (realised minus implied over 21d) when there is no trade table."""
+    if lcfg["target"] == "forward_pnl" and td is not None:
+        archs = [a for a in lcfg.get("targets", [lcfg["target_archetype"]]) if a in set(td["archetype"])] or [lcfg["target_archetype"]]
+        h, hd = int(lcfg.get("target_horizon", 5)), lcfg.get("diag_horizon")
+        out = {a: _forward_pnl_target(td, a, h) for a in archs}
+        if hd:
+            out.update({f"{a}_h{hd}": _forward_pnl_target(td, a, int(hd)) for a in archs})
+        return out
+    return {"realised_minus_implied": (m["rv_1m"].shift(-21) - m["atm_1m"]).rename("realised_minus_implied")}
+
+
+def _screen_kwargs(lcfg: dict, targets: dict | None = None) -> dict:
+    hd = lcfg.get("diag_horizon")
+    diag = {a: f"{a}_h{hd}" for a in (targets or {}) if hd and f"{a}_h{hd}" in (targets or {})}
+    return dict(k=int(lcfg.get("k", 5)), ks=tuple(lcfg.get("ks", (10, 21))), feature_targets=lcfg.get("feature_targets") or {},
+                interact=tuple(lcfg.get("interact", ("carry", "settling"))) or None, diag_targets=diag)
 
 
 def cmd_leading(a):
@@ -184,17 +198,19 @@ def cmd_leading(a):
     m = pd.read_parquet(a.market); lab = _labels_series(a.labels)
     comp = labels.composite(features.build(m, names=cfg["labeller"]["features"]))
     L = leading.build(m, names=list(lcfg["features"]), events=lcfg.get("events") or None, **lcfg["features"])
-    y = _leading_target(m, lcfg, a.td)
-    gc = gates.load_gates(a.gates)
-    sc = leading.screen(L, lab, comp, y, gc["phase4_leading"])
-    lagged = leading.screen(L, lab, comp, y, gc["phase4_leading"], lag=int(lcfg.get("lag_check", 1)))
+    td = schema.coerce(pd.read_parquet(a.td)) if a.td else None
+    ys = _leading_targets(m, lcfg, td)
+    gc = gates.load_gates(a.gates); kw = _screen_kwargs(lcfg, ys)
+    sc = leading.screen(L, lab, comp, ys, gc["phase4_leading"], **kw)
+    lagged = leading.screen(L, lab, comp, ys, gc["phase4_leading"], lag=int(lcfg.get("lag_check", 1)), holdout_frac=0.0, n_perm=0, **kw)
     sc["delta_r2_lagged"] = sc["feature"].map(lagged.set_index("feature")["delta_r2"])
-    out = Path(a.out); out.mkdir(parents=True, exist_ok=True); sc.to_csv(out / "leading_screen.csv", index=False); L.to_csv(out / "leading_features.csv")
-    print(sc.round(4).to_string(index=False))
+    lf = pd.DataFrame([{"feature": c, **leading.lift(L[c], lab, **(lcfg.get("lift") or {}))} for c in L.columns])
+    out = Path(a.out); out.mkdir(parents=True, exist_ok=True); sc.to_csv(out / "leading_screen.csv", index=False); L.to_csv(out / "leading_features.csv"); lf.to_csv(out / "leading_lift.csv", index=False)
+    print(sc.round(4).to_string(index=False)); print(lf.round(3).to_string(index=False))
     kept = [f for f in sc.loc[sc["retain"], "feature"]]
     pg = None
     if kept:
-        psi = leading.pressure(L, lcfg.get("pressure_weights") or {k: 1.0 for k in kept})
+        psi = leading.pressure(L, lcfg.get("pressure_weights") or {k: 1.0 for k in kept}, zscore_window=lcfg.get("pressure_zscore_window"))
         psi.to_csv(out / "pressure.csv")
         pg = leading.pressure_gain(psi, lab, comp, prior_strength=lcfg_all["transitions"]["prior_strength"])
         print(f"pressure index from {kept}: OOS transition gain {pg['total_gain_per_transition']:+.4f} in {pg['folds_positive']}/4 folds")
@@ -208,7 +224,7 @@ def cmd_inspect(a):
     m = pd.read_parquet(a.market) if a.market.endswith(".parquet") else pd.read_csv(a.market, index_col=0, parse_dates=True)
     td = schema.coerce(pd.read_parquet(a.td)) if a.td else None
     target = _forward_pnl_target(td, cfg["labeller"].get("target_archetype", "straddle_atm")) if (td is not None and cfg["labeller"].get("target") == "forward_pnl") else None
-    res = inspect_.dump(m, cfg, pcfg, lcfg, gc, a.pair, a.out, td=td, target=target)
+    res = inspect_.dump(m, cfg, pcfg, lcfg, gc, a.pair, a.out, td=td, target=target, targets=_leading_targets(m, lcfg["leading"], td) if td is not None else None)
     print(f"{len(res['files'])} files in {a.out} · today {res['today']} · spec {res['spec']['partition']} bounds {tuple(round(b) for b in res['spec']['bounds'])} · retained leading {res['retained'] or 'none'}")
     print((Path(a.out) / "README.md").read_text())
 
@@ -276,11 +292,13 @@ def cmd_demo(a):
     hi = [x for x in ("stressed", "extreme") if x in P.index]
     f0 = transitions.fan(P, pd.Series({today: 1.0}), psi_path=np.zeros(21))
     L = leading.build(m, names=list(lcfg["leading"]["features"]), **lcfg["leading"]["features"])
-    scr = leading.screen(L, lab_s, labels.composite(features.build(m, names=cfg["labeller"]["features"])), target.reindex(m.index), gates.load_gates(a.gates)["phase4_leading"])
+    ys = _leading_targets(m, lcfg["leading"], td)
+    scr = leading.screen(L, lab_s, labels.composite(features.build(m, names=cfg["labeller"]["features"])), ys,
+                         gates.load_gates(a.gates)["phase4_leading"], **_screen_kwargs(lcfg["leading"], ys))
     kept = list(scr.loc[scr["retain"], "feature"])
     p_const = transitions.p_state_at(f0, hi)
     if kept:
-        psi = leading.pressure(L, {k: 1.0 for k in kept})
+        psi = leading.pressure(L, {k: 1.0 for k in kept}, zscore_window=lcfg["leading"].get("pressure_zscore_window"))
         fit = transitions.fit_tilt(lab_s, psi, P)
         path = transitions.covariate_path(float(psi.iloc[-1]), 21, lcfg["transitions"]["pressure_policy"], lcfg["transitions"]["pressure_halflife"])
         p_tilt = transitions.p_state_at(transitions.fan(P, pd.Series({today: 1.0}), psi_path=path, beta=fit["beta"]), hi)

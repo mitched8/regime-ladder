@@ -110,35 +110,77 @@ def fit_tilt(labels: pd.Series, psi: pd.Series, P0: pd.DataFrame, grid=None, k: 
     """Maximum-likelihood beta for psi (k-step likelihood). With `base`, its coefficient gamma is fitted
     first on its own and held fixed while beta is fitted, so beta is psi's INCREMENTAL effect. Returns
     beta, gamma, log-likelihoods with and without psi, and the gain per observation (nats)."""
-    grid = np.linspace(-3, 3, 31) if grid is None else np.asarray(grid)
-    gamma = _maximise(lambda g: loglik(labels, base, P0, g, k), grid) if base is not None else 0.0
-    beta = _maximise(lambda b: loglik(labels, psi, P0, b, k, base, gamma), grid)
-    ll1, ll0 = loglik(labels, psi, P0, beta, k, base, gamma), loglik(labels, psi, P0, 0.0, k, base, gamma)
+    fit = _fit_multi([(labels, psi, P0, base)], grid, k)
     n = int(labels.notna().sum() - k)
-    return {"beta": beta, "gamma": gamma, "loglik": ll1, "loglik0": ll0, "gain_per_transition": (ll1 - ll0) / max(n, 1), "n": n, "k": k}
+    return {**fit, "gain_per_transition": (fit["loglik"] - fit["loglik0"]) / max(n, 1), "n": n, "k": k}
 
 
-def oos_gain(labels: pd.Series, psi: pd.Series, P0: pd.DataFrame | None = None, folds: int = 4,
-             min_train_frac: float = 0.4, prior_strength: float = 10.0, k: int = 1, base: pd.Series | None = None) -> pd.DataFrame:
+def _fit_multi(seqs, grid, k):
+    """One beta (and one gamma) across several (labels, psi, P0, base) sequences: the log-likelihoods add."""
+    grid = np.linspace(-3, 3, 31) if grid is None else np.asarray(grid)
+    has_base = any(b is not None for _, _, _, b in seqs)
+    ll_g = lambda g: sum(loglik(l, b, P, g, k) for l, _, P, b in seqs if b is not None)
+    gamma = _maximise(ll_g, grid) if has_base else 0.0
+    ll_b = lambda bt: sum(loglik(l, p, P, bt, k, b, gamma) for l, p, P, b in seqs)
+    beta = _maximise(ll_b, grid)
+    return {"beta": beta, "gamma": gamma, "loglik": ll_b(beta), "loglik0": ll_b(0.0)}
+
+
+def _as_list(x):
+    return list(x) if isinstance(x, (list, tuple)) else [x]
+
+
+def fold_cuts(indexes, folds: int, min_train_frac: float):
+    """Fold boundaries as DATES over the union of several indexes, so that pooled sequences are cut at the
+    same point in time. Returns folds + 1 timestamps; fold i tests [cuts[i], cuts[i+1])."""
+    u = pd.DatetimeIndex(sorted(set().union(*[set(ix) for ix in indexes])))
+    pos = np.linspace(int(min_train_frac * len(u)), len(u), folds + 1).astype(int)
+    return [u[min(p, len(u) - 1)] if p < len(u) else u[-1] + pd.Timedelta(days=1) for p in pos]
+
+
+def _zscore(x: pd.Series, ref: pd.Series) -> pd.Series:
+    sd = float(ref.std())
+    return (x - float(ref.mean())) / (sd if sd and np.isfinite(sd) else 1.0)
+
+
+def oos_gain(labels, psi, P0: pd.DataFrame | None = None, folds: int = 4, min_train_frac: float = 0.4,
+             prior_strength: float = 10.0, k: int = 1, base=None, standardise: bool = False) -> pd.DataFrame:
     """Time-ordered folds: estimate P0 (sticky prior), gamma (for `base`) and beta on the training part, score
     the test part with the k-step likelihood with and without psi. One row per fold with the out-of-sample
     gain per observation and the fitted beta. psi earns its place if the gain is positive in most folds and
-    in total."""
-    n = len(labels)
-    cuts = np.linspace(int(min_train_frac * n), n, folds + 1).astype(int)
+    in total.
+
+    `labels`, `psi` and `base` may each be a list of Series (one per pair): the folds are then cut at
+    common dates, P0 is estimated per pair, and one beta and gamma are fitted on the pooled likelihood.
+    With `standardise`, psi and base are z-scored per pair with the TRAINING part's mean and sd in every
+    fold, so nothing about their level comes from the test window."""
+    L, S = _as_list(labels), _as_list(psi)
+    B = _as_list(base) if base is not None else [None] * len(L)
+    cuts = fold_cuts([l.index for l in L], folds, min_train_frac)
     rows = []
-    for a, b in zip(cuts[:-1], cuts[1:]):
-        tr, te = labels.iloc[:a], labels.iloc[a - k: b]  # overlap k days so the first test observation is scored
-        names = state_order(labels)
-        P_tr = transition_matrix(tr, names=names, prior_strength=prior_strength) if P0 is None else P0
-        fit = fit_tilt(tr, psi, P_tr, k=k, base=base)
-        ll1 = loglik(te, psi, P_tr, fit["beta"], k, base, fit["gamma"])
-        ll0 = loglik(te, psi, P_tr, 0.0, k, base, fit["gamma"])
-        m = len(te) - k
-        rows.append({"fold": len(rows) + 1, "train_end": tr.index[-1], "beta": fit["beta"], "gamma": fit["gamma"], "n_test": m,
-                     "oos_gain_per_transition": (ll1 - ll0) / max(m, 1)})
-    out = pd.DataFrame(rows)
-    out.attrs["total_gain_per_transition"] = float((out["oos_gain_per_transition"] * out["n_test"]).sum() / max(out["n_test"].sum(), 1))
+    for i, (ca, cb) in enumerate(zip(cuts[:-1], cuts[1:])):
+        seqs_tr, seqs_te = [], []
+        for l, p, b in zip(L, S, B):
+            a = int(l.index.searchsorted(ca)); bpos = int(l.index.searchsorted(cb))
+            tr, te = l.iloc[:a], l.iloc[max(0, a - k): bpos]      # overlap k days so the first test observation is scored
+            if len(tr) < 50 or len(te) <= k:
+                continue
+            pp, bb = p, b
+            if standardise:
+                pp = _zscore(p, p.reindex(tr.index))
+                bb = _zscore(b, b.reindex(tr.index)) if b is not None else None
+            P_tr = transition_matrix(tr, names=state_order(l), prior_strength=prior_strength) if P0 is None else P0
+            seqs_tr.append((tr, pp, P_tr, bb)); seqs_te.append((te, pp, P_tr, bb))
+        if not seqs_tr:
+            continue
+        fit = _fit_multi(seqs_tr, None, k)
+        ll1 = sum(loglik(te, pp, P, fit["beta"], k, bb, fit["gamma"]) for te, pp, P, bb in seqs_te)
+        ll0 = sum(loglik(te, pp, P, 0.0, k, bb, fit["gamma"]) for te, pp, P, bb in seqs_te)
+        m = sum(len(te) - k for te, _, _, _ in seqs_te)
+        rows.append({"fold": i + 1, "train_end": max(tr.index[-1] for tr, _, _, _ in seqs_tr), "beta": fit["beta"], "gamma": fit["gamma"],
+                     "n_test": m, "oos_gain_per_transition": (ll1 - ll0) / max(m, 1)})
+    out = pd.DataFrame(rows, columns=["fold", "train_end", "beta", "gamma", "n_test", "oos_gain_per_transition"])
+    out.attrs["total_gain_per_transition"] = float((out["oos_gain_per_transition"] * out["n_test"]).sum() / max(out["n_test"].sum(), 1)) if len(out) else float("nan")
     out.attrs["folds_positive"] = int((out["oos_gain_per_transition"] > 0).sum())
     out.attrs["k"] = k
     return out

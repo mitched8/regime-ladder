@@ -9,6 +9,9 @@ Three worlds, each with one extra "desk series" (`desk_flow`) registered the way
   C  null world,   desk_flow built with a timestamp bug: it is the trailing percentile of realised vol TEN DAYS
      AHEAD, presented as if it were trailing                                       -> it will be retained; the
      reviewer must catch it from the packet alone
+  D  external world, desk_flow = an exogenous series that tilts transitions five days after it is
+     observed (nothing in the surface or the path knows it)                        -> should be retained; the
+     lift row and the k=21 horizon are where it shows most clearly
 
 The answer key (ANSWER_KEY.md) is for the owner; never give it to the reviewer.
 """
@@ -50,8 +53,14 @@ def expected_forward_pnl(m, h=5, tenor=21):
                       for i in range(len(m))], index=m.index)
 
 
-def run(name, energy_beta, flow, stages):
-    m = synth.simulate_market(2520, seed=0, energy_beta=energy_beta)
+def flow_external(m, asof=None):
+    """A desk series that is the external driver itself, observed on the day (0..100 by a fixed transform)."""
+    x = m["external_true"] if asof is None else m.loc[:asof, "external_true"]
+    return (50 + 20 * x).clip(0, 100).rename("desk_flow")
+
+
+def run(name, energy_beta, flow, stages, external_beta=0.0):
+    m = synth.simulate_market(2520, seed=0, energy_beta=energy_beta, external_beta=external_beta, external_lead=5)
     td = synth.simulate_trades(m, seed=1)
     cfg, pcfg, lcfg = (yaml.safe_load(open(CFGS[i])) for i in (0, 3, 2))
     leading.LEADING["desk_flow"] = flow
@@ -59,7 +68,8 @@ def run(name, energy_beta, flow, stages):
     src = Path("out/calibration") / name
     target = expected_forward_pnl(m)
     res = inspect.dump(m, cfg, pcfg, lcfg, gates.load_gates(), "EURUSD", src, td=td, target=target,
-                       target_name="expected forward 5d straddle P&L given the true state path (synthetic, noiseless)")
+                       targets={"straddle_atm": target, "straddle_atm_h21": expected_forward_pnl(m, h=21)},
+                       target_name="expected forward 5d straddle P&L given the true state path (synthetic, noiseless); diagnostic outcome at 21d")
     for st in stages:
         p = pack.build(st, OUT / name / st, src=src, td=td if st == "data" else None, market=m,
                        label=f"calibration {name} (synthetic)", config_paths=CFGS, archetypes_cfg=yaml.safe_load(open(CFGS[4])))
@@ -72,3 +82,4 @@ if __name__ == "__main__":
     run("A_energy", 3.0, flow_true, ["leading", "states", "ladder", "data"])
     run("B_null", 0.0, flow_true, ["leading"])
     run("C_planted", 0.0, flow_leaky, ["leading"])
+    run("D_external", 0.0, flow_external, ["leading"], external_beta=1.0)

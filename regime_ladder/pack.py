@@ -47,14 +47,18 @@ DEFS = {
   - complacency: realised under implied, low vol-of-vol, cheap front end, combined.
   - stored_energy = gap_pct x complacency / 100 (a stretched price held by a complacent market; the hypothesis is the product).
   - jump_cluster_pct: clustering of large returns. coupling_shift_pct: change in short vs long spot-vol coupling. coherence_pct: cross-pair co-movement.
+  - gap_z_signed: the signed stretch itself (a z, not a percentile); drift_t: t-statistic of the 60-day drift (signed). Signed features are judged on the RR outcome (`target` column), unsigned ones on the straddle.
   - Any other name is a desk series supplied through the adapter; it is claimed trailing-only.
-- Screen, one feature at a time, against a baseline that already knows the named state AND the continuous composite, 4 walk-forward folds after a 40% initial training block:
-  - (1) outcome test: `delta_r2` = pooled out-of-sample R² gain on the forward outcome; `folds_r2_up` = folds in which the gain is > 0; `n` = days with feature, label, composite and outcome; `r2_base` = the baseline's own OOS R² on that feature's sample (samples differ by feature because warm-ups differ).
-  - (2) transition test: `transition_gain` = out-of-sample 5-step transition log-likelihood gain per transition (nats) through a tilt, with the composite already in the tilt; `folds_transition_up` = folds with gain > 0; `n_transitions` = days with feature and label (no outcome needed, so it can exceed `n`). `beta_mean` = the feature's tilt coefficient per standard deviation, averaged over folds.
-  - Retain only if delta_r2 >= 0.005 AND folds_r2_up >= 3 AND transition_gain >= 0.002 AND folds_transition_up >= 3. `delta_r2_lagged` repeats test (1) with the feature delayed one day; it is noisy at the 0.005 scale and is informative only when far above or below delta_r2.
-- Shock score (0..100) = mean of CUSUM pressure on squared surprises (alarm when it reaches 1), BOCD probability of a short run, and recent |surprise|; surprise = return / implied daily vol marked the day before.
-- Gate 4: at least one feature retained AND the pressure index of the retained features (their mean, centred at 50, /25) passes test (2) on its own: gain >= 0.002 per transition, > 0 in >= 3/4 folds.
-- Pressure index = mean of the RETAINED features, centred at 50 and divided by 25 (0 = normal). If nothing is retained, no pressure index exists and only the constant fan is meaningful.
+- Screen, one feature at a time, against a baseline that already knows the named state AND the continuous composite, 4 walk-forward folds after a 40% initial training block (`n_pairs` > 1 means the test is pooled across pairs with pair dummies, folds cut at common dates, one tilt coefficient across pairs):
+  - (1) outcome test: `delta_r2` = pooled out-of-sample R² gain on the forward outcome named in `target`; `folds_r2_up` = folds in which the gain is > 0; `n` = days with feature, label, composite and outcome; `r2_base` = the baseline's own OOS R² on that feature's sample (samples differ by feature because warm-ups differ). `delta_r2_low` is the gain when the feature is allowed to act only in the calm states (carry, settling) as well as overall: the conditional form of the stored-energy hypothesis. `delta_r2_lagged` repeats the test with the feature delayed one day; differences under 0.005 are noise.
+  - (2) transition test: `transition_gain` = out-of-sample k-step transition log-likelihood gain per transition (nats) through a tilt, with the composite already in the tilt, both z-scored per fold on the training part; the declared k is 5. `transition_gain_k10` and `_k21` are the same at longer horizons, diagnostics only: a slow build-up that leads by a week can show at 21 before it shows at 5. `folds_transition_up` = folds with gain > 0 at the declared k; `n_transitions` = days with feature and label (no outcome needed, so it can exceed `n`). `beta_mean` = tilt coefficient per standard deviation of the feature, averaged over folds.
+  - `fail_reason` names the first rule a non-retained feature failed, on unrounded values (the table rounds). `target_note` says when a feature's configured outcome was unavailable and the default was used.
+  - `p_perm`: share of 100 circular shifts of the feature (>= 63 days) whose outcome gain matches or beats the observed one; the selection control for a screen over many candidates. A real feature has p_perm near 0.01 (the floor); a noise feature anywhere.
+  - Retention, two stages. Walk-forward on the first 80% of the history: delta_r2 >= 0.005 AND folds_r2_up >= 3 AND transition_gain >= 0.002 AND folds_transition_up >= 3 AND p_perm <= 0.05. Then only the top 3 candidates by delta_r2 that pass are tested once on the final 20% (`holdout_tested` = True; trained on everything before it) and keep the flag unless the hold-out CONTRADICTS them: `delta_r2_holdout` must be > -0.005 and `transition_gain_holdout` > -0.002. The hold-out holds three or four episodes, so it is asked not to reverse the finding, not to re-prove it; read a hold-out value near zero as neutral, a clearly negative one as the warning it is. A candidate that passed the walk-forward but was not in the top 3 shows `holdout_tested` = False and is not retained.
+- Lift (event study): on days when the feature is at or above its trailing 90th percentile, the probability that the state enters the high band within 20 days, divided by the same probability on all eligible days (days not already in the high band). `n_signal_runs` counts separate signal episodes — the effective sample. 90% block-bootstrap interval. Not a gate; it is the more powerful test for a sparse feature and the number a trader can read directly.
+- Shock score (0..100) = mean of CUSUM pressure on squared surprises (an alarm is a day on which the pressure reaches 0.999, i.e. the statistic crosses its calibrated threshold), BOCD probability of a short run, and recent |surprise|; surprise = return / implied daily vol marked the day before.
+- Gate 4: at least one feature retained AND the pressure index of the retained features passes test (2) on its own: gain >= 0.002 per transition, > 0 in >= 3/4 folds.
+- Pressure index = mean of the RETAINED features after each is z-scored against its own trailing 3-year window (0 = normal for that feature; percentiles, products and signed series on one footing). If nothing is retained, no pressure index exists and only the constant fan is meaningful.
 - High band = stressed and extreme. Transition tilt: P_ij(psi) proportional to P0_ij x exp(beta x psi x (rank_j - rank_i)), with the composite as a second covariate (gamma); likelihood scored k = 5 days ahead. The fan horizon (21 days) is the transition forecast's horizon, not a ladder horizon.""",
 }
 
@@ -235,10 +239,11 @@ def stage_ladder(src: Path) -> list[str]:
     return out
 
 
-def alignment(L: pd.DataFrame, market: pd.DataFrame, col: str = "rv_1w", shifts=(-10, -5, -1, 0, 1, 2, 5, 10)) -> pd.DataFrame:
+def alignment(L: pd.DataFrame, market: pd.DataFrame, col: str = "rv_1w", shifts=(-21, -10, -5, -1, 0, 1, 2, 5, 10, 15, 21)) -> pd.DataFrame:
     """Rank correlation of each feature on day t with `col` (a trailing realised vol) stamped on day t+k. For a
     trailing feature the profile is smooth and usually peaks at k <= 0; a sharp peak at one k > 0, far above its
-    neighbours, is the signature of a future value stamped on today."""
+    neighbours, is the signature of a future value stamped on today. A genuine slow leader rises gently into
+    the future and plateaus well below that; the grid runs to +21 so the two shapes can be told apart."""
     rows = {}
     for c in L.columns:
         rows[c] = {f"k={k:+d}": L[c].corr(market[col].shift(-k).reindex(L.index), method="spearman") for k in shifts}
@@ -251,7 +256,21 @@ def stage_leading(src: Path, market: pd.DataFrame | None = None) -> list[str]:
     S = _read(src, "shock.csv", index_col=0, parse_dates=True)
     psi = _read(src, "pressure.csv", index_col=0, parse_dates=True)
     out = ["## 1. Gate 4", "```", json.dumps(_read(src, "gate_phase4.json"), indent=1), "```",
-           "## 2. Screen (one feature at a time vs state + composite baseline)", _md(_read(src, "leading_screen.csv"), digits=4)]
+           "## 2. Screen (one feature at a time vs state + composite baseline)"]
+    sc = _read(src, "leading_screen.csv")
+    main = [c for c in ["feature", "target", "n", "n_pairs", "r2_base", "delta_r2", "p_perm", "delta_r2_low", "delta_r2_diag", "delta_r2_lagged", "folds_r2_up", "transition_gain", "folds_transition_up",
+                        "holdout_tested", "delta_r2_holdout", "transition_gain_holdout", "retain", "fail_reason"] if c in sc]
+    if "target_note" in sc and sc["target_note"].notna().any():
+        out += ["Target substitutions: " + "; ".join(f"{r.feature}: {r.target_note}" for r in sc.dropna(subset=["target_note"]).itertuples()) + "\n"]
+    if "diag_target" in sc and sc["diag_target"].notna().any():
+        out += [f"`delta_r2_diag` is the outcome test on {', '.join(sorted(set(sc['diag_target'].dropna())))} (the same archetype at the diagnostic horizon); it does not decide retention.\n"]
+    out += [_md(sc[main], digits=4)]
+    hz = [c for c in ["feature", "n_transitions", "transition_gain", "transition_gain_k10", "transition_gain_k21", "beta_mean"] if c in sc]
+    out += ["Transition test by horizon (k = 5 decides; 10 and 21 are diagnostics):", _md(sc[hz], digits=4)]
+    lf = _read(src, "leading_lift.csv")
+    if lf is not None:
+        lc = [c for c in ["feature", "p_event_signal", "p_event_all", "lift", "lift_lo", "lift_hi", "n_signal", "n_signal_runs", "n_events_after_signal"] if c in lf]
+        out += ["## 2b. Lift: P(high band within 20 days | feature in its top decile) vs base rate", _md(lf[lc], digits=3)]
     desc = L.describe(percentiles=[0.05, 0.5, 0.95]).T
     desc["first_valid"] = [L[c].first_valid_index().date() if L[c].notna().any() else None for c in L]
     desc["last_valid"] = [L[c].last_valid_index().date() if L[c].notna().any() else None for c in L]
@@ -299,7 +318,7 @@ def stage_leading(src: Path, market: pd.DataFrame | None = None) -> list[str]:
             "Alarm dates (first 60): " + ", ".join(str(d.date()) for d in alarms[:60]) + "\n"]
     if market is not None and "rv_1w" in market:
         out += ["## 8b. Alignment check: Spearman correlation of each feature on day t with trailing 1-week realised vol on day t+k "
-                "(k < 0 past, k > 0 future)", _md(alignment(L, market), index=True, digits=2)]
+                "(k < 0 past, k > 0 future). A stamping error is a sharp peak at one future k; a genuine slow lead rises gently and plateaus", _md(alignment(L, market), index=True, digits=2)]
     f0, f1 = _read(src, "fan_constant.csv", index_col=0), _read(src, "fan_tilted.csv", index_col=0)
     if f0 is not None:
         hi = [c for c in f0.columns if c in HIGH]
