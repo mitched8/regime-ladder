@@ -101,9 +101,12 @@ config choice, not the default (DECISIONS D14).
 
 Empirical and non-parametric, conditional on the entry-date label. Means shrunk toward the
 unconditional mean **at the same horizon** with strength κ; tail statistics reported unshrunk.
-Intervals by circular block bootstrap with blocks ≈ 2h (default) or Newey–West with bandwidth h.
-Effective N ≈ n · min(1, entry spacing / h). Episodes = contiguous runs of the regime in the
-label series.
+Intervals (default) are the wider of two bootstraps centred on the mean: a circular block bootstrap
+with blocks ≈ 2h, for the overlap dependence of consecutive entries, and a cluster bootstrap over
+the regime episodes the entries fall in, for the shared-fate dependence inside an episode (entries
+in one episode all live through the same exit). Newey–West with bandwidth h is the fast
+alternative. Effective N ≈ n · min(1, entry spacing / h). Episodes = contiguous runs of the regime
+in the label series — the honesty column, and the unit the second bootstrap resamples.
 
 ## 6. Regime dependence
 

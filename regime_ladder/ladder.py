@@ -70,6 +70,33 @@ def block_bootstrap_ci(x: np.ndarray, block_len: int, n_boot: int = 2000, alpha:
     return (float(np.quantile(means, alpha / 2)), float(np.quantile(means, 1 - alpha / 2)))
 
 
+def episode_cluster_ci(x: np.ndarray, cluster: np.ndarray, n_boot: int = 2000, alpha: float = 0.10,
+                       rng: np.random.Generator | None = None) -> tuple[float, float]:
+    """Cluster bootstrap over regime episodes: resample whole episodes of entries with replacement.
+    Entries that share an episode share its fate (when it ends, what it ends into), a dependence that
+    outlasts the h-day overlap the block bootstrap is sized for. Needs at least two episodes."""
+    rng = rng or np.random.default_rng(0)
+    ids, inv = np.unique(cluster, return_inverse=True)
+    k = len(ids)
+    if k < 2:
+        return (np.nan, np.nan)
+    sums = np.bincount(inv, weights=x, minlength=k)
+    cnts = np.bincount(inv, minlength=k).astype(float)
+    pick = rng.integers(0, k, size=(n_boot, k))
+    means = sums[pick].sum(axis=1) / cnts[pick].sum(axis=1)
+    return (float(np.quantile(means, alpha / 2)), float(np.quantile(means, 1 - alpha / 2)))
+
+
+def episode_ids(labels: pd.DataFrame) -> pd.DataFrame:
+    """(pair, date, episode) — the run id of each date's regime within its pair's label series."""
+    out = []
+    for pair, g in labels.sort_values("date").groupby("pair"):
+        r = g["regime"].values
+        run = np.concatenate([[0], np.cumsum(r[1:] != r[:-1])]) if len(r) else np.array([], dtype=int)
+        out.append(pd.DataFrame({"pair": pair, "entry_date": g["date"].values, "episode": run}))
+    return pd.concat(out, ignore_index=True)
+
+
 def count_episodes(labels: pd.DataFrame) -> dict:
     """Number of contiguous runs of each regime in the (date-ordered) label series, per pair."""
     out = {}
@@ -93,9 +120,18 @@ def entry_spacing_days(entry_dates: pd.Series) -> float:
 # ----------------------------------------------------------------------------- the ladder
 def ladder(cum_lab: pd.DataFrame, labels: pd.DataFrame, alpha: float = 0.10, ci: str = "hac",
            n_boot: int = 2000, seed: int = 0) -> pd.DataFrame:
-    """Entry-conditional ladder. One row per group x regime x h, plus an 'ALL' (unconditional) regime row."""
+    """Entry-conditional ladder. One row per group x regime x h, plus an 'ALL' (unconditional) regime row.
+
+    ci="boot": the interval is the WIDER of two bootstraps, centred on the mean — a circular block bootstrap
+    with blocks of 2h (the overlap dependence of consecutive entries) and a cluster bootstrap over the
+    regime episodes the entries fall in (the shared-fate dependence inside an episode). On synthetic data
+    with true labels the block bootstrap alone covers ~85% at h = 5–10 for a nominal 90%, the pair ~90%.
+    ci="hac": Newey–West with bandwidth h; faster, and optimistic at short evidence for the same reason.
+    """
     rng = np.random.default_rng(seed)
     eps = count_episodes(labels)
+    ep_ids = episode_ids(labels)
+    cum_lab = cum_lab.merge(ep_ids, on=["pair", "entry_date"], how="left")
     rows = []
     z = 1.6448536 if abs(alpha - 0.10) < 1e-9 else float(abs(np.quantile(np.random.default_rng(1).standard_normal(400000), alpha / 2)))
     for gkey, g in cum_lab.groupby(GROUP):
@@ -104,13 +140,20 @@ def ladder(cum_lab: pd.DataFrame, labels: pd.DataFrame, alpha: float = 0.10, ci:
         for reg in regimes:
             gr = g if reg == "ALL" else g[g["regime"] == reg]
             for h, gh in gr.groupby("h"):
-                x = gh.sort_values("entry_date")["cum_pnl"].values
+                gh = gh.sort_values("entry_date")
+                x = gh["cum_pnl"].values
                 n = len(x)
                 mean = float(x.mean()) if n else np.nan
                 n_eff = n * min(1.0, spacing / h)
                 if ci == "boot":
                     lo, hi = block_bootstrap_ci(x, block_len=2 * h, n_boot=n_boot, alpha=alpha, rng=rng)
-                    se = (hi - lo) / (2 * z) if np.isfinite(lo) else np.nan
+                    half = 0.5 * (hi - lo) if np.isfinite(lo) else np.nan
+                    if reg != "ALL" and gh["episode"].notna().all():
+                        lo2, hi2 = episode_cluster_ci(x, gh["episode"].values.astype(int), n_boot=n_boot, alpha=alpha, rng=rng)
+                        if np.isfinite(lo2):
+                            half = max(half, 0.5 * (hi2 - lo2))
+                    lo, hi = mean - half, mean + half
+                    se = half / z if np.isfinite(half) else np.nan
                 else:
                     se = hac_se(x, bandwidth=h)
                     lo, hi = mean - z * se, mean + z * se

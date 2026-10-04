@@ -88,8 +88,12 @@ design:
 daily earn depends on the regime and on remaining tenor, a shared daily shock across all live
 trades (overlap dependence) and AR(1) idiosyncratic noise, then runs the ladder with the *true*
 labels and compares against the analytic expectation. Across seeds, nominal 90% intervals cover
-the truth about 85–89% of the time and the median |error|/se is about 0.7. That is the evidence
-that the statistics are implemented correctly; it says nothing about real data.
+the truth about 88% of the time and the median |error|/se is about 0.7. The interval is the wider
+of a block bootstrap and an episode-cluster bootstrap: with the block bootstrap alone, coverage at
+h = 5–10 in the states with 15–20 episodes sat near 80%, because entries in one episode share its
+exit and that dependence outlasts the h-day overlap the blocks are sized for. Resampling episodes
+is what the "episodes" column has been promising all along. That is the evidence that the
+statistics are implemented correctly; it says nothing about real data.
 
 The demo (`python -m regime_ladder demo`) runs the same pipeline with *estimated* labels. On the
 synthetic data the labeller agrees with the true regime roughly half the time — rising starts
