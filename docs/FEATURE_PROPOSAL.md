@@ -1,7 +1,14 @@
 # Feature proposal — what to add, where it goes, how it earns its place
 
-Status: proposal for owner review. Nothing here is implemented. Items that are accepted become
-work-unit cards in `PLAN.md`; the slot each feature goes into is part of the decision.
+Status: proposal for owner review. Items that are accepted become work-unit cards in `PLAN.md`; the
+slot each feature goes into is part of the decision.
+
+Update 2026-10-04: of the plumbing in §7, items 2 (fold-local standardisation in the tilt), 3 (selection
+control: permutation null plus a hold-out guard) and the pooled-pairs screen are implemented in
+`leading.py` / `transitions.py` (see `DECISIONS.md` D22 and the gate-threshold log); `drift_t` and a
+signed gap are registered; the synthetic extension has the external-leader world (`docs/calibration/D_external`).
+Items 1 (state-feature selection) and 4 (per-column availability lag) remain open. No feature from
+§3–§6 is implemented yet.
 
 ## 1. The problem this addresses
 
