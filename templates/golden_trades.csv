@@ -2,5 +2,5 @@ trade_id,pair,archetype,entry_date,why_chosen,verified_by,verified_on
 ,,straddle_atm,,calm period throughout life,,
 ,,straddle_atm,,entered within five days before a stress episode,,
 ,,rr_25d,,lived through a stress episode; strikes drifted far from their deltas,,
-,,fly_25d,,expired with spot near the body strike,,
+,,fly_10d,,expired with spot near the body strike,,
 ,,rr_25d,,ordinary trade in the most recent full year,,

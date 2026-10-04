@@ -55,7 +55,7 @@ asof: <YYYY-MM-DD>        # the data snapshot date; put it in output filenames
 archetype_map:            # source name -> scaffold name
   <source>: straddle_atm
   <source>: rr_25d
-  <source>: fly_25d
+  <source>: fly_10d
 ```
 
 ## 4. Archetype conventions (`configs/archetypes.yaml`, tracked, generic)

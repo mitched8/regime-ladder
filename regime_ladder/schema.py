@@ -9,7 +9,7 @@ Required columns
 ----------------
 trade_id      str     unique per trade
 pair          str     e.g. "EURUSD"
-archetype     str     e.g. "straddle_atm", "rr_25d", "fly_25d"
+archetype     str     e.g. "straddle_atm", "rr_25d", "fly_10d"
 tenor_days    int     option tenor in trading days
 entry_date    date    entry date (the conditioning date)
 date          date    calendar day of this row

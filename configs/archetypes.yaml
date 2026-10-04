@@ -12,8 +12,8 @@ rr_25d:
   hedge_rule: "<as applied by the source>"
   notional_unit: "<e.g. per 1 unit of call notional in the vega-neutral ratio>"
   currency: "<P&L currency>"
-fly_25d:
-  legs: "long 25d call + long 25d put, short ATM straddle (or the reverse), same expiry"
+fly_10d:
+  legs: "long 10d call + long 10d put, short ATM straddle (or the reverse), same expiry"
   ratio_rule: "<e.g. vega-neutral wings vs body at inception>"
   hedge_rule: "<as applied by the source>"
   notional_unit: "<e.g. per 1 unit of wing notional>"

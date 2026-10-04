@@ -41,9 +41,9 @@ DEFAULT_P = np.array([[0.970, 0.0255, 0.0045],
 DEFAULT_BASE = {  # earn per day by regime
     "straddle_atm": {"carry": -1.2, "transition": 0.3, "crisis": 1.5},
     "rr_25d": {"carry": 0.2, "transition": -0.4, "crisis": -1.0},
-    "fly_25d": {"carry": 0.5, "transition": -0.2, "crisis": -1.8},
+    "fly_10d": {"carry": 0.5, "transition": -0.2, "crisis": -1.8},
 }
-DEFAULT_SLOPE = {"straddle_atm": 0.0, "rr_25d": -0.6, "fly_25d": -0.3}  # remaining-tenor term
+DEFAULT_SLOPE = {"straddle_atm": 0.0, "rr_25d": -0.6, "fly_10d": -0.3}  # remaining-tenor term
 DEFAULT_SIGMA_COMMON = {"carry": 1.5, "transition": 3.0, "crisis": 5.0}  # shared daily shock
 DEFAULT_SIGMA_IDIO = 1.0
 DEFAULT_AR = 0.3
