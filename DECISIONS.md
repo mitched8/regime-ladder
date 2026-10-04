@@ -23,7 +23,7 @@ dated when closed. Gate-threshold changes are recorded here with the reason.
 | D17 | Tags in use and their per-pair thresholds | corr_sign, pinned, event_window (defaults); intervention_risk for the pairs the desk names, with direction, move threshold, level and the official-comment flag column | open | | WU-08d; thresholds live in `configs/local.yaml` |
 | D18 | CUSUM false-alarm budget | one alarm per ~4 years (ARL₀ 1000, default); per year (250) | open | | WU-14; `configs/leading.yaml` |
 | D19 | Future-path policy per leading covariate | pressure index: decaying with a 10-day half-life (default) or frozen; calendar features: calendar; anything else: zero | open | | WU-17; a frozen path is a scenario, not a forecast |
-| D20 | Desk-proprietary leading series to screen | none (default); flow, dealer gamma, barrier book, positioning — each wrapped as an `asof` function and registered | open | | WU-16; screened one at a time like the generic candidates |
+| D20 | Desk-proprietary leading series to screen | none (default); own-book risk measures, aggregated flow statistics, positioning — each wrapped as an `asof` function and registered | open | | WU-16; which series are admissible, and under what aggregation and null rules, is decided by the owner and recorded in the local decisions file alongside `configs/local.yaml`, never here; the tracked repo sees them only as registered functions |
 | D21 | Forward outcome for the leading screen | forward 5d archetype P&L (default); realised-minus-implied over 21d | open | | WU-16; `configs/leading.yaml › leading.target` |
 
 ## Gate threshold changes
