@@ -35,6 +35,25 @@ the marginal expected earn of carrying one unit of a component for the next h da
 state. Short horizons (1–5d) are primary; the increments between horizons (`ladder.increments`) give
 the expected earn of an aged unit, which is how the ladder applies to existing inventory.
 
+## 3a. States
+
+The entry state is a small set of **named states** from two axes of a composite stress score —
+level (low / mid / high) and direction (down / flat / up) — mapped through a partition table with
+hysteresis: **carry, rising, crisis, normalising, settling**. A three-state level-only partition
+is kept as the benchmark. The partition, boundaries, direction thresholds, smoothing and
+hysteresis are chosen by `labels.calibrate_states` on a training window, scored by out-of-sample
+separation of a *forward outcome*: the archetype's forward 5-day P&L where the backtester covers
+the window, forward surface change otherwise. On synthetic data, direction earns its place against
+P&L and not against forward vol; the finder is built to show that rather than assume it.
+
+**Sub-states** may be discovered inside a named state (`discover.py`) by clustering days on the
+characteristics vector (`profile.py`: own-pair spot-vol behaviour, realised vs implied, skew and
+wings; dollar-factor share and cross-pair correlation; correlations of spot and vol with equities,
+rates, commodities, credit and vol indices). A sub-state is descriptive unless it has ≥ 5
+episodes, is stable across halves of the history, and — separately — conditioning on it beats the
+parent state's ladder out of sample. The **state profile** (what distinguishes a state, and where
+today sits within it) is always shown.
+
 ## 4. Units
 
 Cash per unit of standard notional (defined per archetype in `configs/archetypes.yaml`). Never

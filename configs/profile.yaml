@@ -1,0 +1,26 @@
+# Characteristics vector for state profiles and sub-state discovery. Generic names; the market
+# adapter maps the source's series onto them. Add or remove entries freely; nothing else changes.
+own:
+  spot: spot
+  iv: atm_1m
+  iv_long: atm_1y
+  rr: rr25_1m
+  fly: fly25_1m
+  rv: rv_1m
+cross_pair: [g10_1, g10_2, g10_3, g10_4, g10_5, g10_6]   # other pairs' spot levels (same side vs the dollar)
+cross_asset:              # name: change type (pct for prices/indices, diff for yields)
+  eq: pct                 # main equity index
+  eq2: pct                # second, pair-relevant equity index
+  rate2y: diff            # front-end yield
+  rate10y: diff           # long-end yield
+  oil: pct
+  gold: pct
+  dxy: pct                # dollar index
+  credit: pct             # a credit spread index
+  vix: pct                # equity vol
+  move: pct               # rates vol
+window: 20
+discovery:
+  kmax: 4
+  min_episodes: 5
+  stability: 0.7

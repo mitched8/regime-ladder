@@ -42,6 +42,11 @@ Produce a daily frame indexed by date with at least: `atm_1m, atm_1y, rr25_1m, f
 rv_1w, rv_1m, rv_3m`. Realised vols come from the hourly spot series. The frame must be
 point-in-time: the value stored for date t is the value that was available at the close of t.
 
+For the state profile (WU-06b) the same frame also carries the other G10 pairs' spot levels
+(`g10_1 … g10_6`, same side versus the dollar) and the cross-asset series named in
+`configs/profile.yaml` under the generic names used there (`eq, eq2, rate2y, rate10y, oil, gold,
+dxy, credit, vix, move`); map source tickers to those names in `configs/local.yaml`.
+
 Cross-check: the trade-day table carries the marks the backtester used at the strategy tenor.
 Join on (pair, date) and tabulate differences against the market adapter's values. Non-zero
 differences mean a cut-time or source mismatch and must be explained before Phase 2.

@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 
-from regime_ladder import ladder, schema
+from regime_ladder import ladder, schema, synth
 
 
 def test_unconditional_row_equals_plain_mean(cum_true, true_labels):
@@ -71,4 +71,4 @@ def test_unlabelled_entries_are_counted_not_silently_dropped(cum_true, true_labe
 
 def test_episode_count(true_labels):
     eps = ladder.count_episodes(true_labels)["EURUSD"]
-    assert set(eps) == {"carry", "transition", "crisis"} and all(v > 5 for v in eps.values())
+    assert set(eps) == set(synth.STATES) and all(v > 3 for v in eps.values())

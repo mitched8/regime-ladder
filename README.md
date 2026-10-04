@@ -4,9 +4,12 @@ Research scaffold for **multi-horizon, entry-conditional trade statistics** on o
 given a backtester that reports daily P&L for every historical entry of a structure, estimate what
 a fresh unit of that structure earns over the next 1, 3, 5, 10 and 20 days conditional on the
 market regime on the entry date — with intervals that respect overlap, the outcome distribution,
-and an honest count of the independent episodes behind each number.
+and an honest count of the independent episodes behind each number. States are five named
+regions of level × direction (carry, rising, crisis, normalising, settling), calibrated by a state
+finder against forward outcomes; each state carries a profile (spot-vol behaviour, dollar-factor
+share, cross-asset correlations) and may contain discovered, stability-tested sub-states.
 
-It is deliberately small (about 1,200 lines including tests), has no dependency on any particular
+It is deliberately small (about 1,900 lines including tests), has no dependency on any particular
 data source, and is validated on synthetic data with analytic ground truth before any real data is
 touched. Site-specific adapters are written locally and never committed.
 
@@ -14,7 +17,7 @@ touched. Site-specific adapters are written locally and never committed.
 
 ```
 pip install -e ".[test]"
-pytest -q                          # 39 tests, ~25 s
+pytest -q                          # 49 tests, ~40 s
 python -m regime_ladder demo       # end to end on synthetic data; writes out/demo/card.md
 python -m regime_ladder validate   # intervals recover the analytic truth across seeds
 ```

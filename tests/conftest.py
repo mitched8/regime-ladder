@@ -15,7 +15,7 @@ def trade_days(market):
 
 @pytest.fixture(scope="session")
 def true_labels(market):
-    return schema.labels_frame("EURUSD", market.index, market["regime_true"].values)
+    return schema.labels_frame("EURUSD", market.index, market["state_true"].values)
 
 
 @pytest.fixture(scope="session")

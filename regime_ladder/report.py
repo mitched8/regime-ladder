@@ -11,7 +11,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from .ladder import GROUP  # noqa: E402
 
-COLOURS = {"carry": "#3B6FD4", "transition": "#2EAE7A", "crisis": "#E8743B", "ALL": "#6B7280"}
+COLOURS = {"carry": "#3B6FD4", "rising": "#2EAE7A", "transition": "#2EAE7A", "crisis": "#E8743B",
+           "normalising": "#8B5CF6", "settling": "#0EA5E9", "ALL": "#6B7280"}
 
 
 def _sel(df: pd.DataFrame, group: tuple) -> pd.DataFrame:
@@ -31,7 +32,8 @@ def ladder_table_md(lad: pd.DataFrame, group: tuple, regime: str) -> str:
     return "\n".join(lines)
 
 
-def card_md(lad: pd.DataFrame, inc: pd.DataFrame, split: pd.DataFrame, group: tuple, regime_today: str) -> str:
+def card_md(lad: pd.DataFrame, inc: pd.DataFrame, split: pd.DataFrame, group: tuple, regime_today: str,
+            profile_lines: list | None = None) -> str:
     pair, arch, tenor = group
     out = [f"## {pair} · {arch} · {tenor}d · entry regime today: {regime_today.upper()}",
            "Reference: hold-for-h from today, no exit rule; cash per unit standard notional.", "",
@@ -52,6 +54,8 @@ def card_md(lad: pd.DataFrame, inc: pd.DataFrame, split: pd.DataFrame, group: tu
     eps = int(_sel(lad, group).query("regime == @regime_today")["episodes"].iloc[0])
     if eps < 10:
         out += [f"_Evidence note: only {eps} independent {regime_today} episodes behind these numbers._", ""]
+    if profile_lines:
+        out += ["**State profile (today vs this state's history, vs all days):**"] + [f"- {l}" for l in profile_lines] + [""]
     return "\n".join(out)
 
 

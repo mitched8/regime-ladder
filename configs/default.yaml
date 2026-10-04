@@ -7,11 +7,16 @@ kappa: 20                         # shrinkage prior strength (effective observat
 
 labeller:
   features: [vol_pct, term_slope_pct, rr_stress_pct]
-  halflife: 3                     # EWMA half-life in days
-  b1: 40                          # carry | transition boundary (composite percentile score)
-  b2: 72                          # transition | crisis boundary
-  delta: 3                        # hysteresis band
-  estimate_breaks: true           # re-estimate b1/b2 by regression kink on forward realised vol (inside training folds in real use)
+  states: 5                       # 5 = level x direction (carry, rising, crisis, normalising, settling); 3 = level only
+  calibrate: true                 # run labels.calibrate_states on the training window; else use the fixed values below
+  target: forward_pnl             # forward_pnl (archetype's forward 5d earn; needs backtester) | forward_rv (10-year surface only)
+  halflife: 3                     # fixed fallbacks, used when calibrate is false
+  b1: 40
+  b2: 72
+  delta: 3
+  dir_k: 0.75                     # direction thresholds at +/- dir_k x sd(slope)
+  max_switches_per_year: 30
+  min_episodes: 5
 
 eval:
   n_splits: 4                     # walk-forward test windows after a 40% initial training block

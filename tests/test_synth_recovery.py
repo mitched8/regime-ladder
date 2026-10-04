@@ -11,7 +11,7 @@ from regime_ladder import ladder, schema, synth
 def _coverage(seed, ci):
     m = synth.simulate_market(1260, seed=seed)
     td = synth.simulate_trades(m, seed=seed + 100)
-    lab = schema.labels_frame("EURUSD", m.index, m["regime_true"].values)
+    lab = schema.labels_frame("EURUSD", m.index, m["state_true"].values)
     lad = ladder.ladder(ladder.attach_entry_labels(ladder.cumulative(td), lab), lab, ci=ci, n_boot=600)
     x = lad[lad["regime"] != "ALL"].merge(synth.true_ladder(), on=["archetype", "regime", "h"])
     x = x[x["n_eff"] >= 20]
@@ -36,15 +36,15 @@ def test_true_ladder_matches_brute_force_expectation():
     rng = np.random.default_rng(3)
     P, T, a = synth.DEFAULT_P, 21, "rr_25d"
     truth = synth.true_ladder(archetypes=(a,), tenor_days=T).set_index(["regime", "h"])["true_ev"]
-    for k, kname in enumerate(synth.REGIMES):
+    for k, kname in enumerate(synth.STATES):
         tot = np.zeros(T)
         n = 4000
         for _ in range(n):
             s = k
             cum = 0.0
             for d in range(1, T + 1):
-                s = rng.choice(3, p=P[s])
-                cum += synth.earn(a, synth.REGIMES[s], T - d)
+                s = rng.choice(len(P), p=P[s])
+                cum += synth.earn(a, synth.STATES[s], T - d)
                 tot[d - 1] += cum
         mc = tot / n
         assert abs(mc[20] - truth[(kname, 21)]) < 0.35, (kname, mc[20], truth[(kname, 21)])

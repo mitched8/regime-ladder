@@ -28,6 +28,7 @@ Status legend: `todo` · `doing` · `review` · `done` · `blocked (see HANDOFF)
 | 04 | Golden trades | `templates/golden_trades.csv`, WU-01 adapter | owner names 4–5 trade IDs (calm; entered just before a stress episode; through a stress episode; expiring near the money; a risk reversal whose strikes drifted far); agent extracts their daily rows to `tests/golden/` and writes `tests/test_golden.py` | test passes; owner has eyeballed each CSV and signed `golden_trades.csv` | routine | todo |
 | 05 | Extend adapter | WU-01 adapter, `checks.py` | RR and fly archetypes, second pair; integrity report per archetype | all checks pass; `info_` lines reviewed | routine | todo |
 | 06 | Market adapter | `features.py`, `docs/LOCALISATION.md` | `adapters/market.py` (untracked): point-in-time market frame (ATM by tenor, RR, fly, spot, realised vols from hourly spot), cached; cross-check of entry-date marks against the marks carried in the trade-day table | every registered feature passes the truncation test on the real frame; cross-check differences tabulated | judgement | todo |
+| 06b | Cross-pair and cross-asset adapter | `configs/profile.yaml`, `profile.py` | extend the market frame with the G10 spot panel and the cross-asset series named in `configs/profile.yaml` (equities, front- and long-end yields, oil, gold, dollar index, credit, equity and rates vol), point-in-time; `profile.characteristics` runs on the real frame | characteristics frame built for 10 years; truncation test on `characteristics` passes; coverage per series tabulated | routine | todo |
 
 **Gate 1 (owner + a quant, 45 min):** integrity report, golden trades, mark cross-check. Pass → Phase 2.
 
@@ -35,7 +36,7 @@ Status legend: `todo` · `doing` · `review` · `done` · `blocked (see HANDOFF)
 - CR-1 to the backtester owners: second-order Greek buckets (gamma, vanna, volga), daily Greeks, remaining tenor and moneyness per leg, explicit residual.
 - CR-2: extend the backfill to cover the earliest stress episode available for two pairs.
 
-## Phase 2 — Labels
+## Phase 2 — States
 
 | WU | Goal | Reads | Produces | Acceptance | Model | Status |
 |---|---|---|---|---|---|---|
@@ -50,7 +51,7 @@ Status legend: `todo` · `doing` · `review` · `done` · `blocked (see HANDOFF)
 | WU | Goal | Reads | Produces | Acceptance | Model | Status |
 |---|---|---|---|---|---|---|
 | 10 | Full ladder | `ladder.py`, `report.py` | all archetypes, pairs, horizons, with labels; increments; persistence split; κ by leave-one-fold-out MSE; cards and plots in `out/ladder/` | identity tests (`tests/test_ladder.py`) pass on real data; cards generated | routine | todo |
-| 11 | Benchmarks | `evaluate.py`, `gates.py` | layer 0 (unconditional), layer 1 (ridge on the feature set, walk-forward), layer 2 (ladder) — `walk_forward.csv` for each; `gate_phase3.json` for layer 2 vs 0 **and** vs 1 | gate evaluated against both; per-horizon table of improvement, rank IC, calibration slope | judgement | todo |
+| 11 | Benchmarks | `evaluate.py`, `gates.py` | layer 0 (unconditional), layer 1 (ridge on the feature set, walk-forward), layer 2 (named-state ladder), layer 2b (sub-state ladder where discovery found stable sub-states) — `walk_forward.csv` for each; `gate_phase3.json` for layer 2 vs 0 **and** vs 1; 2b vs 2 | gate evaluated against both; per-horizon table of improvement, rank IC, calibration slope; a sub-state enters the card's number only if 2b beats 2 | judgement | todo |
 | 12 | Age-dependence diagnostics | WU-10 outputs, trade-day table | exposure-normalised daily P&L by h, by T−h, by h/T pooled across tenors (raw-dollar version if Greeks not yet available); residual by remaining tenor; conditional on cumulative move since entry | three collapse plots per archetype + one page naming which panel collapses | routine | todo |
 | 13 | Robustness and report | WU-10/11 outputs | leave-one-episode-out; sensitivity to halflife, δ, κ, block length; `docs/PHASE3_REPORT.md` | tables in `out/robustness/`; report drafted; no single episode flips a sign at h ≤ 10 or it is stated | routine | todo |
 
