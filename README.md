@@ -30,7 +30,7 @@ python -m regime_ladder validate   # intervals recover the analytic truth across
 | `PLAN.md` | work units through the Phase 3 go/no-go, with acceptance criteria and gates |
 | `docs/MODEL_GUIDE.md` | method, module map, what the synthetic validation shows |
 | `docs/LOCALISATION.md` | how to connect real data through untracked adapters |
-| `docs/explainer.html` | one-page explainer for traders and quants: how to read the ladder, with synthetic screenshots and a labeller-lag demo; open in a browser |
+| `docs/framework.html` | the complete framework for a human reader — data, features, five states and the state finder, profiles, sub-state discovery, shock detection, transition probabilities, leading features, the ladder, the path model, validation and gates — with synthetic screenshots and two interactive demos; open in a browser |
 | `templates/` | standing rules for the coding agent, builder and reviewer prompts, handoff and decisions templates |
 | `configs/gates.yaml` | pre-registered pass/fail thresholds; owner-only |
 
