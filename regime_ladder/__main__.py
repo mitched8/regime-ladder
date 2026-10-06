@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from . import checks, discover, evaluate, features, gates, inspect as inspect_, labels, ladder, leading, pack, profile, report, schema, shock, synth, tags, transitions, view
+from . import checks, discover, evaluate, features, gates, inspect as inspect_, labels, ladder, leading, pack, profile, report, schema, shock, sweep, synth, tags, transitions, view
 
 
 def _cfg(path):
@@ -245,6 +245,14 @@ def cmd_pack(a):
     print(f"wrote {p} ({len(p.read_text().splitlines())} lines, {p.stat().st_size / 1024:.0f} KB)")
 
 
+def cmd_sweep(a):
+    """Labeller variants on one frozen trade table: one row each with the chosen spec, durations, the straddle's sign and Gate 2 on the fit and confirm windows."""
+    m = pd.read_parquet(a.market); td = schema.coerce(pd.read_parquet(a.td))
+    df = sweep.run(m, td, a.pair, sweep.load(a.sweep), gates.load_gates(a.gates), a.out)
+    cols = ["name", "partition", "fell_back", "halflife", "delta", "finder_oos_r2", "switches_per_year", "min_episodes", "straddle_high_minus_low_h5", "gate2_fit", "gate2_confirm", "on_grid_edge", "agreement_with_first"]
+    print(f"fit window ends {df.attrs['fit_end']}"); print(df[cols].to_string(index=False, float_format=lambda v: f"{v:.3f}"))
+
+
 def cmd_view(a):
     """One self-contained HTML page over one or more inspect folders: pivots over the ladder, one pair's series per tab."""
     p = view.build(a.src, a.out, label=a.label)
@@ -342,6 +350,7 @@ def main(argv=None):
     i = sp.add_parser("inspect"); i.add_argument("--market", required=True); i.add_argument("--td"); i.add_argument("--pair", default="EURUSD"); i.add_argument("--out", default="out/inspect"); i.set_defaults(f=cmd_inspect)
     q = sp.add_parser("pack"); q.add_argument("--stage", required=True, choices=["data", "states", "ladder", "leading"]); q.add_argument("--src", help="folder written by inspect")
     q.add_argument("--td"); q.add_argument("--market"); q.add_argument("--label", default=""); q.add_argument("--out", default="out/packets"); q.set_defaults(f=cmd_pack)
+    y = sp.add_parser("sweep"); y.add_argument("--market", required=True); y.add_argument("--td", required=True); y.add_argument("--pair", default="EURUSD"); y.add_argument("--sweep", default="configs/sweep.yaml"); y.add_argument("--out", default="out/sweep"); y.set_defaults(f=cmd_sweep)
     w = sp.add_parser("view"); w.add_argument("--src", action="append", required=True, help="inspect folder, or a parent holding one per pair; repeatable"); w.add_argument("--out", default="out/view.html"); w.add_argument("--label", default=""); w.set_defaults(f=cmd_view)
     m = sp.add_parser("demo"); m.add_argument("--out", default="out/demo"); m.add_argument("--days", type=int, default=2520); m.add_argument("--seed", type=int, default=0); m.add_argument("--energy-beta", type=float, default=0.0, dest="energy_beta"); m.set_defaults(f=cmd_demo)
     a = p.parse_args(argv); a.f(a)

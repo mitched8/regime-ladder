@@ -1,0 +1,23 @@
+# States in isolation: variants of the labeller scored on one frozen trade table (regime_ladder/sweep.py).
+# Everything not named here comes from the base. Record the variant you adopt in DECISIONS.md and copy it
+# into configs/default.yaml › labeller; do not keep sweeping after Gate 2.
+confirm_frac: 0.3                 # finder sees the first 70%; gate2_confirm is the last 30%
+base:
+  features: [vol_pct, term_slope_pct, rr_stress_pct]
+  states: "6"
+  target: forward_pnl             # forward_pnl (needs --td) | forward_rv
+  target_archetype: straddle_atm
+  dir_window: 5
+  halflives: [2, 3, 5]
+  deltas: [0, 2, 3, 5]
+  dir_ks: [0.5, 0.75, 1.0]
+variants:
+  - {name: base}
+  - {name: plus_vrp,     features: [vol_pct, term_slope_pct, rr_stress_pct, vrp_stress_pct]}
+  - {name: plus_beta,    features: [vol_pct, term_slope_pct, rr_stress_pct, spotvol_beta_pct]}
+  - {name: all_six,      features: [vol_pct, term_slope_pct, rr_stress_pct, vrp_stress_pct, spotvol_beta_pct, rv_term_pct]}
+  - {name: no_slope,     features: [vol_pct, rr_stress_pct]}
+  - {name: level_only,   states: "3"}
+  - {name: wide_grid,    halflives: [1, 2, 3, 5, 8], deltas: [0, 2, 3, 5, 7, 10]}
+  - {name: dir_10,       dir_window: 10}
+  - {name: rv_target,    target: forward_rv}

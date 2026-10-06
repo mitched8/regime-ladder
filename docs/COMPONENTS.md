@@ -103,6 +103,19 @@ results, and for leading features an alignment check against future realised vol
 separate model session with `templates/CHALLENGER_PROMPT.md`. Leading features need only the market
 frame and labels: run `labels`, `inspect --market ...` and `pack --stage leading`, no backtester.
 
+## Working on the states in isolation
+
+`python -m regime_ladder sweep --market m.parquet --td td.parquet --pair EURUSD [--sweep configs/sweep.yaml]`
+holds the trade table, the horizons and Gate 2 fixed and varies only the labeller: feature set, partition,
+finder grid, direction window, finder target. Each variant is calibrated on the first 70% of the history;
+`gate2_fit` is Gate 2's separated-cell fraction on entries in that window and `gate2_confirm` on the entries
+after it, which the finder never saw. The table also shows the chosen spec, switches per year, the thinnest
+state, the duration-ratio range, the straddle's high-minus-low sign at h = 5, whether the spec sits on the
+edge of its own grid (`on_grid_edge`: widen the grid) and whether the asked-for partition fell back to a
+smaller one (`fell_back`: too few episodes). `labels_<name>.parquet` per variant feeds `ladder`, `inspect`
+and `view` directly. Adopt one variant into `configs/default.yaml › labeller` with a DECISIONS line, then
+stop sweeping: every run reads the same forward P&L.
+
 ## Looking at the results without a notebook
 
 `python -m regime_ladder view --src out/inspect [--src out/inspect_usdjpy ...] --out out/view.html`
