@@ -31,6 +31,11 @@ COMMON = """- Units: P&L is cash per unit of standard notional (per unit of vega
 - States: carry, rising, agitated, stressed, normalising, settling (+ extreme if it has >= 5 episodes, else merged into stressed). Stress rank low to high (used for 'moves up' and by the transition tilt): carry < settling < rising < agitated < normalising < stressed < extreme."""
 
 DEFS = {
+    "sweep": """- A sweep holds the trade table, the horizons and Gate 2 fixed and varies only the labeller: feature set, partition (3 = level only; 6 = level x direction; 6x = plus an extreme band), finder grid (half-lives, hysteresis deltas, direction k), direction window, finder target.
+- Each variant's finder is calibrated on the first part of the history (dates up to the fit end in section 1); `gate2_fit` is Gate 2's fraction of separated (group, h <= 10) cells on entries in that window, `gate2_confirm` on the entries after it, which the finder never saw. Threshold 0.75 for both.
+- `finder_oos_r2` is the finder's own walk-forward R² of the state means on the daily forward target inside the fit window; it is a selection score, not a gate, and low values (0.02-0.10) are normal for a daily 5-day P&L target.
+- `on_grid_edge`: the chosen half-life or hysteresis is the smallest / largest value tried. `fell_back`: the asked-for partition had too few episodes and a coarser one was used. `straddle_high_minus_low_h5`: mean 5-day earn of straddle entries in the high band minus the low band (should be positive). `agreement_with_first`: share of days on which the variant's label equals the first variant's.
+- Every variant reads the same forward P&L, so a sweep is a look at the test set: one sweep, one adoption, recorded in DECISIONS.md.""",
     "data": """- One row per trade per day of life. `age` counts trading days from entry starting at 1. `pnl` = sum of components (trade, delta hedge, vega hedge) where present.
 - Base legs: ATM straddle, 25d put/call, 10d put/call, each hedged leg by leg. Packages (RR, fly) are weight vectors over legs; if the source also runs them, the package should regress onto its legs with R² ~ 1 and stable coefficients.
 - Expected: no gaps in age; components sum to pnl; long-option legs have positive vega at age 1; the largest daily P&L rows fall on dates of known market stress.""",
@@ -183,6 +188,21 @@ def stage_states(src: Path) -> list[str]:
     cols = [c for c in ["partition", "halflife", "delta", "dir_k", "b1", "b2", "oos_r2", "switches_per_year", "min_episodes", "extreme_merged"] if c in rep]
     top = rep.sort_values("oos_r2", ascending=False).groupby("partition").head(5)[cols]
     out += ["## 2. Finder: top 5 candidates per partition", _md(top)]
+    fi = _read(src, "finder_inputs.csv", index_col=0, parse_dates=True)
+    if fi is not None:
+        fi = fi.join(comp[["smoothed", "regime", "level", "direction"]], how="inner")
+        b = pd.cut(fi["smoothed"], bins=range(0, 101, 10), include_lowest=True)
+        g = fi.groupby(b, observed=True).agg(n=("target", "count"), target_mean=("target", "mean"), target_sd=("target", "std"), level_target_mean=("level_target", "mean"))
+        g["target_se_x_sqrt5"] = g["target_sd"] / np.sqrt(g["n"].clip(lower=1)) * np.sqrt(5)
+        out += ["## 2b. What the finder saw: both targets by smoothed-composite decile",
+                "`target` is the forward P&L the partition / direction / hysteresis are scored on; `level_target` the forward ATM the bounds are step-fitted on. "
+                "The s.e. is inflated by sqrt(5) because consecutive 5-day targets overlap. In-sample, whole history.", _md(g.reset_index().rename(columns={"smoothed": "composite_bin"}))]
+        by = {}
+        for key in ("regime", "level", "direction"):
+            t = fi.groupby(key)["target"].agg(n="count", mean="mean", sd="std"); t["se_x_sqrt5"] = t["sd"] / np.sqrt(t["n"].clip(lower=1)) * np.sqrt(5); by[key] = t
+        out += ["## 2c. Mean target by named state, by level band alone, by direction band alone (in-sample)",
+                "If the level bands separate and the direction bands do not, the direction axis is not earning its place.",
+                _md(by["regime"], index=True), _md(by["level"], index=True), _md(by["direction"], index=True)]
     dur = _read(src, "durations.csv")
     share = lab.value_counts(normalize=True).rename("share_of_days")
     sm = comp.groupby("regime")["smoothed"].agg(["mean", "min", "max"]).add_prefix("composite_")
@@ -218,6 +238,33 @@ def stage_states(src: Path) -> list[str]:
     if tc:
         trows = [{"tag": t, "cell": c, **info} for t, cells in tc.items() for c, info in cells.items() if isinstance(info, dict)]
         out += ["## 9. Tag cells", _md(pd.DataFrame(trows))]
+    return out
+
+
+def stage_sweep(src: Path) -> list[str]:
+    """One sweep folder (regime_ladder/sweep.py): the variants table and, per variant, what its labels look like."""
+    rows = _read(src, "sweep.csv")
+    readme = (src / "README.md").read_text() if (src / "README.md").exists() else ""
+    out = ["## 1. Variants", readme.strip(), "",
+           _md(rows[[c for c in ["name", "features", "target", "partition", "fell_back", "halflife", "delta", "dir_k", "b1", "b2", "finder_oos_r2", "switches_per_year", "states",
+                                 "min_episodes", "duration_ratio_min", "duration_ratio_max", "straddle_high_minus_low_h5", "gate2_fit", "gate2_confirm", "on_grid_edge", "agreement_with_first"] if c in rows]], cap=50)]
+    yr = {}
+    for r in rows.itertuples():
+        f = src / f"labels_{r.name}.parquet"
+        if f.exists():
+            lab = pd.read_parquet(f).set_index("date")["regime"]
+            yr[r.name] = pd.crosstab(pd.Index(lab.index.year, name="year"), lab, normalize="index").round(2)
+    if yr:
+        first = next(iter(yr))
+        out += [f"## 2. Share of days per state by year — variant `{first}` (the reference)", _md(yr[first], index=True, digits=2)]
+        diffs = []
+        for n, t in yr.items():
+            if n == first:
+                continue
+            a, b = yr[first].align(t, join="outer", fill_value=0)
+            d = (a - b).abs().sum(axis=1) / 2          # total variation distance per year
+            diffs.append({"variant": n, "mean_yearly_label_shift": d.mean(), "max_yearly_label_shift": d.max(), "year_of_max": int(d.idxmax())})
+        out += ["## 3. How far each variant's labels move from the reference, per year (total variation of the state shares; 0 = same, 1 = disjoint)", _md(pd.DataFrame(diffs))]
     return out
 
 
@@ -339,7 +386,7 @@ def stage_leading(src: Path, market: pd.DataFrame | None = None) -> list[str]:
 def build(stage: str, out: str | Path, src: str | Path | None = None, td: pd.DataFrame | None = None,
           market: pd.DataFrame | None = None, label: str = "", config_paths=(), archetypes_cfg: dict | None = None) -> Path:
     out = Path(out); out.mkdir(parents=True, exist_ok=True)
-    meta = _read(Path(src), "meta.json") if src else None
+    meta = _read(Path(src), "meta.json") if src and (Path(src) / "meta.json").exists() else None
     meta = meta or {}
     head = [f"# Review packet · stage `{stage}`" + (f" · {label}" if label else ""), "",
             _kv({"pair": meta.get("pair", "?"), "data": f"{meta.get('first_date', '?')} to {meta.get('last_date', '?')} ({meta.get('days', '?')} days)",
@@ -349,7 +396,7 @@ def build(stage: str, out: str | Path, src: str | Path | None = None, td: pd.Dat
     if stage == "data":
         body = stage_data(td, market, archetypes_cfg or {})
     else:
-        body = stage_leading(Path(src), market) if stage == "leading" else {"states": stage_states, "ladder": stage_ladder}[stage](Path(src))
+        body = stage_leading(Path(src), market) if stage == "leading" else {"states": stage_states, "ladder": stage_ladder, "sweep": stage_sweep}[stage](Path(src))
     p = out / "packet.md"
     p.write_text("\n".join(head + body) + "\n")
     return p

@@ -6,6 +6,7 @@ Updated at the end of every session. The next session starts by reading this fil
 WU-00 — Localise — status: todo
 
 ## Done (this session)
+- Finder tab in `view` (targets by composite decile with the bounds, separation by state and by each axis alone, the finder's grid with the chosen cell) and Sweep tab (`view --sweep`); `inspect` writes `finder_inputs.csv`; states packet gains sections 2b/2c; `pack --stage sweep`; challenger checklist S0 and W1–W6.
 - `sweep` command (`regime_ladder/sweep.py`, `configs/sweep.yaml`): the states component on its own — labeller variants scored on one frozen trade table, finder calibrated on the first 70%, Gate 2 reported on fit and confirm windows, spec-on-grid-edge and partition-fallback flags, labels per variant. 9 variants in ~25 s on ten synthetic years. `tests/test_sweep.py`.
 - `view` command (`regime_ladder/view.py` + `view_template.html`): one self-contained HTML page over one or more inspect folders. Ladder / Matrix / Out-of-sample tabs are pivots over pair × strategy × tenor × entry state × horizon; States / Transitions / Shock / Leading show one pair's series over the state bands. No server, no network, nothing recomputed. `tests/test_view.py`.
 - Screen plumbing (`leading.py`, `transitions.py`): pooled screen across pairs (pair dummies, folds at common dates, one tilt β), fold-local z-scoring in the tilt, permutation p-value for the outcome gain, hold-out guard, diagnostic horizons (k = 10, 21; outcome at 21d), low-band interaction (`delta_r2_low`), per-feature targets (signed features → RR), event-study `lift`, `gap_z_signed` and `drift_t` registered, pressure index z-scored on a trailing window. Synthetic external-leader world (`external_beta`, `external_lead`); calibration world D. Gates keys recorded in DECISIONS.
@@ -35,7 +36,7 @@ WU-00 — Localise — status: todo
 
 ## Last test run
 ```
-115 passed (pytest -q, ~6 min)
+117 passed (pytest -q, ~6 min)
 ```
 
 ## Data as-of

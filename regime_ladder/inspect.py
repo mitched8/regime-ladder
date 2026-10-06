@@ -61,6 +61,8 @@ def dump(market: pd.DataFrame, cfg: dict, pcfg: dict, lcfg: dict, gates_cfg: dic
     lv = labels.level_labels(sc, spec["bounds"], spec["delta"]); dr = labels.direction_labels(ds, spec["d_down"], spec["d_up"], spec["delta_d"])
     _w(out, "composite.csv", pd.DataFrame({"composite": comp, "smoothed": sc, "direction_score": ds, "level": lv, "direction": dr, "regime": lab}),
        "labels.composite / ewma / direction_score / level_labels / direction_labels / apply_spec", "the labeller step by step: raw composite, EWMA, slope, level band, direction band, named state")
+    _w(out, "finder_inputs.csv", pd.DataFrame({"target": target.reindex(comp.index), "level_target": lvl.reindex(comp.index)}),
+       "the finder's two targets", f"what the finder scored against, per day: `target` [{tname}] for partition / direction / hysteresis, `level_target` (forward {c.get('level_target', 'atm_1m')}, {int(c.get('level_horizon', 5))}d ahead) for the level bounds")
     names = labels.state_order(lab)
     P = labels.transition_matrix(lab, names=names, prior_strength=lcfg["transitions"]["prior_strength"])
     _w(out, "transition_matrix.csv", P, "labels.transition_matrix(labels, prior_strength)", "daily matrix with the sticky prior; rows = from, columns = to")

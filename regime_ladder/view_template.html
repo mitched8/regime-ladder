@@ -64,13 +64,13 @@ tr.hi td{background:#eef7f1} tr.dimr td{color:var(--muted)}
 'use strict';
 const D = JSON.parse(document.getElementById('data').textContent);
 const ORDER = ['ALL','carry','settling','rising','agitated','normalising','stressed','extreme'];
-const COL = {carry:'#3B6FD4',rising:'#2EAE7A',agitated:'#D4A017',stressed:'#E8743B',extreme:'#B91C1C',normalising:'#8B5CF6',settling:'#0EA5E9',ALL:'#6B7280'};
+const COL = {carry:'#3B6FD4',rising:'#2EAE7A',agitated:'#D4A017',stressed:'#E8743B',extreme:'#B91C1C',normalising:'#8B5CF6',settling:'#0EA5E9',transition:'#D4A017',crisis:'#E8743B',ALL:'#6B7280'};
 const PAL = ['#4F46E5','#E8743B','#2EAE7A','#D4A017','#0EA5E9','#8B5CF6','#B91C1C','#6B7280','#1a1d23','#F472B6'];
 const DASH = ['', '7 4', '2 3', '9 3 2 3', '14 4', '4 2 1 2'];
 const LAB = {pair:'pair', archetype:'strategy', tenor_days:'tenor', regime:'entry state', h:'horizon'};
 const LADDER_METRICS = [['mean_shrunk','EV, shrunk'],['mean','EV'],['p_profit','P(profit)'],['q50','median'],['q05','5th pct'],['q95','95th pct'],['es05','ES 5%'],['se','standard error'],['n_eff','n_eff'],['episodes','episodes'],['earn_per_day','earn per day (increments)']];
 const WF_METRICS = [['improvement','MSE improvement vs unconditional'],['rank_ic','rank IC'],['calib_slope','calibration slope'],['n_test','n_test']];
-const TABS = [['overview','Overview'],['ladder','Ladder'],['matrix','Matrix'],['oos','Out of sample'],['states','States'],['transitions','Transitions'],['shock','Shock'],['leading','Leading']];
+const TABS = [['overview','Overview'],['ladder','Ladder'],['matrix','Matrix'],['oos','Out of sample'],['states','States'],['finder','Finder'],['transitions','Transitions'],['shock','Shock'],['leading','Leading']].concat(D.sweep ? [['sweep','Sweep']] : []);
 
 const HAS_LADDER = D.ladder && D.ladder.length > 0;
 const cmp = k => (a, b) => k === 'regime' ? ORDER.indexOf(a) - ORDER.indexOf(b) : (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b)));
@@ -112,6 +112,7 @@ function svgLines(series, opt) {
   let g = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
   if (opt.bands) for (const b of opt.bands) g += `<rect x="${xe(b.i0).toFixed(1)}" y="${m.t}" width="${(xe(b.i1 + 1) - xe(b.i0)).toFixed(1)}" height="${ih}" fill="${COL[b.state] || '#ccc'}" opacity="0.13"/>`;
   for (const t of niceTicks(lo, hi)) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${ys(t).toFixed(1)}" y2="${ys(t).toFixed(1)}" stroke="${t === 0 ? '#555' : '#e6e8ec'}" stroke-width="${t === 0 ? 1 : 0.8}"/><text x="${m.l - 6}" y="${(ys(t) + 3.5).toFixed(1)}" text-anchor="end">${fmt(t, Math.abs(t) < 1 && t !== 0 ? 2 : (Math.abs(t) < 10 ? 1 : 0))}</text>`;
+  if (opt.vlines) for (const l of opt.vlines) { const X = (m.l + (l.xi + 0.5) * iw / n).toFixed(1); g += `<line x1="${X}" x2="${X}" y1="${m.t}" y2="${m.t + ih}" stroke="${l.colour || '#1a1d23'}" stroke-dasharray="5 3"/><text x="${X}" y="${m.t - 2}" text-anchor="middle">${esc(l.label || '')}</text>`; }
   if (opt.hlines) for (const l of opt.hlines) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${ys(l.y).toFixed(1)}" y2="${ys(l.y).toFixed(1)}" stroke="${l.colour || '#999'}" stroke-dasharray="4 3"/><text x="${W - m.r - 2}" y="${(ys(l.y) - 3).toFixed(1)}" text-anchor="end">${esc(l.label || '')}</text>`;
   const xt = opt.xticks || (opt.xcats || []).map((c, i) => ({i, label: c}));
   for (const t of xt) g += `<text x="${xs(t.i).toFixed(1)}" y="${H - m.b + 15}" text-anchor="middle">${esc(t.label)}</text>${opt.xticks ? `<line x1="${xs(t.i).toFixed(1)}" x2="${xs(t.i).toFixed(1)}" y1="${m.t + ih}" y2="${m.t + ih + 4}" stroke="#999"/>` : ''}`;
@@ -408,13 +409,98 @@ function tabLeading() {
   return h;
 }
 
+/* bars with error whiskers: items [{label, y, se, n, colour}] */
+function svgBars(items, opt = {}) {
+  const W = opt.W || 560, H = opt.H || 240, m = {l: 50, r: 12, t: 16, b: 42}, iw = W - m.l - m.r, ih = H - m.t - m.b, n = items.length;
+  let lo = 0, hi = 0; for (const it of items) { lo = Math.min(lo, it.y - 2 * (it.se || 0)); hi = Math.max(hi, it.y + 2 * (it.se || 0)); }
+  if (hi === lo) { hi += 1; lo -= 1; } const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+  const ys = v => m.t + ih - (v - lo) / (hi - lo) * ih, bw = iw / n * 0.6;
+  let g = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+  for (const t of niceTicks(lo, hi)) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${ys(t).toFixed(1)}" y2="${ys(t).toFixed(1)}" stroke="${t === 0 ? '#555' : '#e6e8ec'}"/><text x="${m.l - 6}" y="${(ys(t) + 3.5).toFixed(1)}" text-anchor="end">${fmt(t, Math.abs(t) < 10 ? 1 : 0)}</text>`;
+  items.forEach((it, i) => { const x = m.l + (i + 0.5) * iw / n; const y0 = ys(0), y1 = ys(it.y);
+    g += `<rect x="${(x - bw / 2).toFixed(1)}" y="${Math.min(y0, y1).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.abs(y0 - y1).toFixed(1)}" fill="${it.colour || '#4F46E5'}" opacity="0.85"><title>${esc(`${it.label}: ${fmt(it.y, 3)} ± ${fmt(2 * (it.se || 0), 3)} (2 s.e.), n ${it.n || ''}`)}</title></rect>`;
+    if (it.se) g += `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${ys(it.y - 2 * it.se).toFixed(1)}" y2="${ys(it.y + 2 * it.se).toFixed(1)}" stroke="#1a1d23" stroke-width="1.4"/>`;
+    g += `<text x="${x.toFixed(1)}" y="${H - m.b + 14}" text-anchor="middle">${esc(it.label)}</text>${it.n ? `<text x="${x.toFixed(1)}" y="${H - m.b + 27}" text-anchor="middle" style="font-size:10px">n ${it.n}</text>` : ''}`; });
+  if (opt.ylabel) g += `<text transform="translate(11 ${m.t + ih / 2}) rotate(-90)" text-anchor="middle">${esc(opt.ylabel)}</text>`;
+  return g + '</svg>';
+}
+function meanSe(vals) { const v = vals.filter(x => x !== null && x !== undefined && !Number.isNaN(x)); if (!v.length) return null; const mu = sum(v) / v.length; const sd = Math.sqrt(sum(v.map(x => (x - mu) ** 2)) / Math.max(1, v.length - 1)); return {y: mu, se: sd / Math.sqrt(v.length) * Math.sqrt(5), n: v.length}; }  /* ×√5: consecutive 5-day targets overlap, so the naive s.e. is ~√5 too small */
+function groupBars(S, key, order, rg) {
+  const by = {}; for (let i = rg.i0; i <= rg.i1; i++) { const k = S[key][i]; if (k === null || k === undefined) continue; (by[k] = by[k] || []).push(S.target[i]); }
+  return order.filter(k => by[k]).map(k => Object.assign({label: k, colour: COL[k] || PAL[order.indexOf(k) % PAL.length]}, meanSe(by[k])));
+}
+
+function tabFinder() {
+  const p = U.pair, t = D.tables[p], S = D.series[p], s = t.spec || {}, rep = t.finder_report || [];
+  let h = `<div class="ctl">${pairSel()}</div>`;
+  if (!S.target) return h + '<div class="empty">This dump has no finder_inputs.csv (older inspect). Rerun inspect.</div>';
+  const rg = {i0: 0, i1: S.dates.length - 1};
+  const tgt = t.meta.finder_target || 'the finder target';
+  h += `<h2>What the finder scored against</h2><div class="note">${esc(tgt)}, one value per entry day. Everything below is in-sample on the whole history: it shows what the step fit and the partition search saw, not Gate 2.</div>`;
+  // 1 · separation by named state, and by each axis on its own
+  h += '<div class="grid">';
+  const st = groupBars(S, 'regime', ORDER.filter(x => x !== 'ALL'), rg);
+  h += `<div class="panel"><h3>Mean target by named state (± 2 s.e.)</h3>${svgBars(st, {ylabel: 'mean target'})}<div class="note">This is the separation Gate 2 later tests out of sample per strategy, tenor and horizon. If the bars are all within each other's whiskers here, Gate 2 cannot pass.</div></div>`;
+  if (S.level) { const lv = groupBars(S, 'level', ['low', 'mid', 'high', 'extreme'], rg); const dr = S.direction ? groupBars(S, 'direction', ['down', 'flat', 'up'], rg) : [];
+    h += `<div class="panel"><h3>The two axes on their own: level band (left), direction band (right)</h3><div style="display:flex;gap:12px"><div style="flex:1;min-width:0">${svgBars(lv, {W: 280, H: 240})}</div>${dr.length ? `<div style="flex:1;min-width:0">${svgBars(dr, {W: 280, H: 240})}</div>` : ''}</div><div class="note">If the level bars separate and the direction bars do not, the direction axis is not earning its place and partition 3 will tie with 6 in the grid below.</div></div>`; }
+  h += '</div>';
+  // 2 · the step fit: target and level target by composite bin, with the bounds
+  const nb = 20, bins = Array.from({length: nb}, () => ({t: [], l: []}));
+  for (let i = 0; i < S.dates.length; i++) { const c = S.smoothed[i]; if (c === null || c === undefined) continue; const b = Math.min(nb - 1, Math.floor(c / (100 / nb))); bins[b].t.push(S.target[i]); if (S.level_target) bins[b].l.push(S.level_target[i]); }
+  const xcats = bins.map((_, i) => `${i * 100 / nb}`), vl = (s.bounds || []).map((b, i) => ({xi: b / (100 / nb) - 0.5, label: `bound ${i + 1} = ${fmt(b, 0)}`}));
+  const mk = (key) => ({label: key === 't' ? 'mean target' : 'mean forward ATM', colour: key === 't' ? '#4F46E5' : '#E8743B', pts: bins.map((b, i) => { const r = meanSe(b[key]); return {xi: i, y: r ? r.y : null, lo: r ? r.y - 2 * r.se : null, hi: r ? r.y + 2 * r.se : null, tip: r ? `composite ${xcats[i]}–${+xcats[i] + 100 / nb}: ${fmt(r.y, 3)} (n ${r.n})` : ''}; })});
+  h += `<h2>The step fit: targets against the smoothed composite, with the chosen bounds</h2><div class="grid">`;
+  if (S.level_target) h += `<div class="panel"><h3>Level target (forward ATM) by composite bin: this is what sets the bounds</h3>${svgLines([mk('l')], {xcats, vlines: vl, xlabel: 'smoothed composite (percentile)', zero: false})}</div>`;
+  h += `<div class="panel"><h3>Forward P&L target by composite bin: this is what the partition and hysteresis are scored on</h3>${svgLines([mk('t')], {xcats, vlines: vl, xlabel: 'smoothed composite (percentile)', zero: true})}</div></div>`;
+  h += `<div class="note">The bounds come from a step fit on the left panel, over the whole history, because the surface's own level is a fact about the surface and not about the trades. The right panel is the P&L the states then have to separate: a flat line there with clear steps on the left means the composite tracks vol but not earn.</div>`;
+  // 3 · the finder grid
+  if (rep.length) {
+    const parts = [...new Set(rep.map(r => String(r.partition)))].sort(), part = U.finderPart || String(s.partition);
+    const rows = rep.filter(r => String(r.partition) === part);
+    const dks = [...new Set(rows.map(r => r.dir_k))].sort((a, b) => a - b), dk = U.finderDk !== undefined && dks.includes(U.finderDk) ? U.finderDk : (dks.includes(s.dir_k) ? s.dir_k : dks[0]);
+    const g = rows.filter(r => r.dir_k === dk), hls = [...new Set(g.map(r => r.halflife))].sort((a, b) => a - b), dls = [...new Set(g.map(r => r.delta))].sort((a, b) => a - b);
+    let vmax = 0; for (const r of g) if (r.oos_r2 !== null) vmax = Math.max(vmax, Math.abs(r.oos_r2));
+    h += `<h2>The finder's grid: out-of-sample R² for every candidate</h2><div class="ctl"><label>partition ${sel('finderPart', parts.map(x => [x, x]), part)}</label>${dks.length > 1 ? `<label>direction k ${sel('finderDk', dks.map(x => [x, x]), dk)}</label>` : ''}<span class="dim">best per partition: ${Object.entries(t.finder_r2 || {}).map(([k, v]) => `${k} → ${fmt(v, 3)}`).join(' · ')}</span></div>`;
+    h += `<table class="hm"><thead><tr><th>half-life ↓ / hysteresis →</th>${dls.map(d => `<th class="num">δ ${d}</th>`).join('')}</tr></thead><tbody>`;
+    for (const hl of hls) { h += `<tr><td class="rowh">${hl}d</td>`; for (const d of dls) { const r = g.find(x => x.halflife === hl && x.delta === d); const chosen = r && String(s.partition) === part && s.halflife === hl && s.delta === d && (s.dir_k === dk || dks.length === 1);
+      h += `<td class="${chosen ? 'today' : ''}" style="${r ? divCol(r.oos_r2, vmax) : ''};cursor:default" title="${r ? esc(`R² ${fmt(r.oos_r2, 4)} · ${fmt(r.switches_per_year, 1)} switches/yr · min episodes ${r.min_episodes}`) : ''}">${r ? `${fmt(r.oos_r2, 3)}<br><span class="dim">${fmt(r.switches_per_year, 0)}/yr</span>` : '·'}</td>`; } h += '</tr>'; }
+    h += `</tbody></table><div class="note">Each cell is one candidate spec: R² on top, switches per year below; the outlined cell is the one in use. The best cell sitting in the first or last row or column means the grid is too narrow (widen <code>halflives</code> / <code>deltas</code> in the sweep). A flat table means the target is not sensitive to smoothing or hysteresis, and the choice is being made by the switch budget, not by the data.</div>`;
+  }
+  // 4 · spec
+  h += `<h2>The spec in use</h2><div class="card" style="max-width:720px"><dl>${Object.entries(s).filter(([k]) => !['bounds', 'episodes'].includes(k)).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${typeof v === 'number' ? fmt(v, 3) : esc(v)}</dd>`).join('')}</dl></div>`;
+  return h;
+}
+
+function tabSweep() {
+  const W = D.sweep; if (!W) return '';
+  const rows = W.rows, names = rows.map(r => r.name);
+  let h = `<div class="note">Labeller variants scored on one frozen trade table. Finder calibrated on dates ≤ ${esc(W.fit_end || '?')}; Gate 2's separated-cell fraction on entries in that window (fit) and after it (confirm, never seen by the finder). Threshold 0.75.</div>`;
+  const bar = (v, thr = 0.75) => v === null || v === undefined ? '·' : `<span style="display:inline-block;width:70px;height:9px;background:#e6e8ec;vertical-align:middle;margin-right:6px"><span style="display:block;width:${Math.round(100 * v)}%;height:9px;background:${v >= thr ? '#2EAE7A' : '#E8743B'}"></span></span>${fmt(v, 2)}`;
+  const cols = [{k: 'name', f: (v, r) => `<span title="${esc(r.features)}">${esc(v)}</span>`}, {k: 'gate2_fit', label: 'gate 2 fit', f: v => bar(v)}, {k: 'gate2_confirm', label: 'gate 2 confirm', f: v => bar(v)}, {k: 'target'}, {k: 'partition', f: (v, r) => `${esc(v)}${r.fell_back ? ' <span class="fail">↓</span>' : ''}`}, {k: 'halflife', label: 'half-life', num: true, d: 0}, {k: 'delta', label: 'hysteresis', num: true, d: 0},
+    {k: 'finder_oos_r2', label: 'finder R²', num: true, d: 3}, {k: 'switches_per_year', label: 'switches/yr', num: true, d: 1}, {k: 'min_episodes', label: 'thinnest state', num: true, d: 0}, {k: 'duration_ratio_min', label: 'dur. ratio min', num: true}, {k: 'duration_ratio_max', label: 'max', num: true},
+    {k: 'straddle_high_minus_low_h5', label: 'straddle high − low, h5', num: true}, {k: 'on_grid_edge', label: 'grid edge', f: v => v ? '<span class="fail">yes</span>' : 'no'}, {k: 'agreement_with_first', label: 'agree w/ first', num: true}];
+  h += `<div style="overflow:auto">${tableHTML('sweep', rows, cols, {rowClass: r => (r.gate2_fit >= 0.75 && r.gate2_confirm >= 0.75) ? 'hi' : ''})}</div>`;
+  h += `<div class="note">Highlighted rows pass both windows. A large drop from fit to confirm is a variant that fitted its window. ↓ after the partition: the asked-for partition had too few episodes and fell back. Click a header to sort.</div>`;
+  // strips
+  const dates = D.series[D.pairs[0]].dates, n = dates.length, Wd = 980, rowH = 16, m = {l: 110, r: 10, t: 8, b: 22}, iw = Wd - m.l - m.r, Hh = m.t + rowH * names.length + m.b;
+  let g = `<svg viewBox="0 0 ${Wd} ${Hh}" xmlns="http://www.w3.org/2000/svg">`;
+  names.forEach((nm, k) => { const st = W.strips[nm]; if (!st) return; const y = m.t + k * rowH; let s0 = 0;
+    for (let i = 1; i <= n; i++) if (i === n || st[i] !== st[s0]) { if (st[s0]) g += `<rect x="${(m.l + s0 / n * iw).toFixed(1)}" y="${y}" width="${((i - s0) / n * iw).toFixed(1)}" height="${rowH - 2}" fill="${COL[st[s0]] || '#ccc'}"><title>${esc(`${nm}: ${st[s0]} ${dates[s0]} → ${dates[i - 1]}`)}</title></rect>`; s0 = i; }
+    g += `<text x="${m.l - 6}" y="${y + rowH - 5}" text-anchor="end">${esc(nm)}</text>`; });
+  let yr = ''; for (let i = 0; i < n; i++) { const yy = dates[i].slice(0, 4); if (yy !== yr) { yr = yy; const X = (m.l + i / n * iw).toFixed(1); g += `<line x1="${X}" x2="${X}" y1="${m.t}" y2="${Hh - m.b}" stroke="#fff" stroke-width="0.8"/><text x="${X}" y="${Hh - 6}">${yy}</text>`; } }
+  if (W.fit_end) { const i = dates.findIndex(d => d > W.fit_end); if (i > 0) { const X = (m.l + i / n * iw).toFixed(1); g += `<line x1="${X}" x2="${X}" y1="${m.t - 4}" y2="${Hh - m.b}" stroke="#1a1d23" stroke-width="1.5" stroke-dasharray="5 3"/><text x="${X}" y="${m.t - 1}" text-anchor="middle" style="font-size:10px">confirm →</text>`; } }
+  g += '</svg>';
+  h += `<h2>The labels each variant produces</h2><div class="panel">${g}</div>${legendHTML(ORDER.filter(x => x !== 'ALL').concat(['transition', 'crisis']).filter(s => Object.values(W.strips).some(st => st.includes(s))).map(s => ({label: s, colour: COL[s]})))}<div class="note">Same history, one strip per variant. Hover the name for the feature set. Where strips agree the states are robust to the choice; where one strip is finer-grained it is switching more (see switches/yr). Hover a run for its dates. Any variant's labels (<code>labels_&lt;name&gt;.parquet</code>) go straight into <code>ladder --labels</code>.</div>`;
+  return h;
+}
+
 /* ---------- wiring ---------- */
 function setPath(path, v) { const ks = path.split('.'); let o = U; for (const k of ks.slice(0, -1)) o = o[k]; o[ks[ks.length - 1]] = v; }
 function render() {
   document.getElementById('nav').innerHTML = TABS.map(([k, l]) => `<button class="${U.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('');
   filterBar();
   const main = document.getElementById('main');
-  main.innerHTML = {overview: tabOverview, ladder: tabLadder, matrix: tabMatrix, oos: tabOOS, states: tabStates, transitions: tabTransitions, shock: tabShock, leading: tabLeading}[U.tab]();
+  main.innerHTML = {overview: tabOverview, ladder: tabLadder, matrix: tabMatrix, oos: tabOOS, states: tabStates, finder: tabFinder, transitions: tabTransitions, shock: tabShock, leading: tabLeading, sweep: tabSweep}[U.tab]();
 }
 document.getElementById('nav').onclick = e => { if (e.target.dataset.tab) { U.tab = e.target.dataset.tab; render(); } };
 document.getElementById('main').addEventListener('change', e => {

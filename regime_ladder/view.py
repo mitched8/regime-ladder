@@ -25,7 +25,8 @@ TEMPLATE = Path(__file__).with_name("view_template.html")
 LADDER_COLS = ["pair", "archetype", "tenor_days", "regime", "h", "to_expiry", "n_eff", "mean", "se", "ci_lo", "ci_hi",
                "p_profit", "q05", "q50", "q95", "es05", "episodes", "w_shrink", "mean_shrunk"]
 SERIES = {  # file -> columns to embed as daily series (whatever of them exists)
-    "composite.csv": ["composite", "smoothed", "direction_score", "regime"],
+    "composite.csv": ["composite", "smoothed", "direction_score", "level", "direction", "regime"],
+    "finder_inputs.csv": ["target", "level_target"],
     "shock.csv": ["surprise", "cusum_pressure", "bocd_p_short", "recent_abs", "score", "har_vol_forecast"],
     "leading_features.csv": None,  # all columns
     "pressure.csv": ["pressure"],
@@ -121,6 +122,7 @@ def one_pair(f: Path) -> tuple[str, dict, dict, dict]:
         "state_profile": {"rows": list(sp.index), "cols": list(sp.columns), "values": sp.values} if sp is not None else None,
         "lead_profile": lp.iloc[0].to_dict() if lp is not None and len(lp) else None,
         "screen": _csv(f / "leading_screen.csv"),
+        "finder_report": _csv(f / "finder_report.csv", index_col=0),
         "tilt_fits": _csv(f / "tilt_fits.csv"),
         "gates": {k: _json(f / f"gate_{k}.json") for k in ("phase2", "phase3", "phase4") if (f / f"gate_{k}.json").exists()},
         "tag_cells": _json(f / "tag_cells.json"),
@@ -135,7 +137,23 @@ def one_pair(f: Path) -> tuple[str, dict, dict, dict]:
     return pair, series, tables, ladders
 
 
-def payload(srcs, label: str = "") -> dict:
+def sweep_payload(sweep_dir: str | Path, dates: list[str]) -> dict:
+    """sweep.csv plus one regime strip per variant, aligned to the page's dates."""
+    d = Path(sweep_dir)
+    rows = pd.read_csv(d / "sweep.csv")
+    idx = pd.DatetimeIndex(dates)
+    strips = {}
+    for r in rows.itertuples():
+        f = d / f"labels_{r.name}.parquet"
+        if f.exists():
+            lab = pd.read_parquet(f).set_index("date")["regime"]
+            strips[r.name] = lab.reindex(idx).tolist()
+    readme = (d / "README.md").read_text() if (d / "README.md").exists() else ""
+    fit_end = readme.split("dates <= ")[1].split(";")[0] if "dates <= " in readme else None
+    return {"rows": rows, "strips": strips, "fit_end": fit_end}
+
+
+def payload(srcs, label: str = "", sweep: str | None = None) -> dict:
     fs = folders(srcs)
     out = {"label": label, "generated": datetime.now().strftime("%Y-%m-%d %H:%M"), "sources": [str(f) for f in fs],
            "pairs": [], "series": {}, "tables": {}, "ladder": [], "increments": [], "walk_forward": []}
@@ -155,11 +173,13 @@ def payload(srcs, label: str = "") -> dict:
             df = pd.concat(dfs, ignore_index=True)
             keys = [c for c in ("pair", "archetype", "tenor_days", "regime", "h", "bucket") if c in df.columns]
             out[k] = df.drop_duplicates(subset=keys, keep="last")
+    if sweep:
+        out["sweep"] = sweep_payload(sweep, out["series"][out["pairs"][0]]["dates"])
     return _clean(out)
 
 
-def build(srcs, out: str | Path = "out/view.html", label: str = "") -> Path:
-    data = payload(srcs, label)
+def build(srcs, out: str | Path = "out/view.html", label: str = "", sweep: str | None = None) -> Path:
+    data = payload(srcs, label, sweep)
     js = json.dumps(data, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
     html = TEMPLATE.read_text().replace("__DATA__", js).replace("__TITLE__", (label or "regime ladder") + " · view")
     out = Path(out)

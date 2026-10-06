@@ -112,8 +112,11 @@ finder grid, direction window, finder target. Each variant is calibrated on the 
 after it, which the finder never saw. The table also shows the chosen spec, switches per year, the thinnest
 state, the duration-ratio range, the straddle's high-minus-low sign at h = 5, whether the spec sits on the
 edge of its own grid (`on_grid_edge`: widen the grid) and whether the asked-for partition fell back to a
-smaller one (`fell_back`: too few episodes). `labels_<name>.parquet` per variant feeds `ladder`, `inspect`
-and `view` directly. Adopt one variant into `configs/default.yaml › labeller` with a DECISIONS line, then
+smaller one (`fell_back`: too few episodes). `labels_<name>.parquet` per variant feeds `ladder` directly; `view --sweep out/sweep` adds a Sweep tab (the
+table with Gate 2 bars and one label strip per variant) and the Finder tab shows what the fit saw for the pair in
+use: the targets by composite decile with the bounds drawn, the separation by named state and by each axis alone,
+and the finder's whole grid with the chosen cell marked. `pack --stage sweep --src out/sweep` writes the packet
+for the challenger (checklist W1–W6). Adopt one variant into `configs/default.yaml › labeller` with a DECISIONS line, then
 stop sweeping: every run reads the same forward P&L.
 
 ## Looking at the results without a notebook

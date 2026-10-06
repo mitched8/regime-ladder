@@ -55,6 +55,20 @@ def test_parent_folder_with_two_pairs(dumped, tmp_path):
     assert set(pd.DataFrame(data["ladder"])["pair"]) == {"EURUSD", "USDJPY"}
 
 
+def test_sweep_tab_data(dumped, tmp_path):
+    from regime_ladder import sweep as sweep_
+    m = synth.simulate_market(1500, seed=0)
+    td = pd.concat([synth.simulate_trades(m.iloc[-700:], tenor_days=t, seed=1 + t) for t in (21, 42)], ignore_index=True)
+    sw = tmp_path / "sweep"
+    sweep_.run(m, td, "EURUSD", {"variants": [{"name": "base"}, {"name": "level_only", "states": "3"}]}, gates.load_gates("configs/gates.yaml"), sw)
+    p = view.build([dumped], tmp_path / "with_sweep.html", sweep=sw)
+    _, data = _embedded(p)
+    assert [r["name"] for r in data["sweep"]["rows"]] == ["base", "level_only"]
+    assert len(data["sweep"]["strips"]["base"]) == 1500 and data["sweep"]["fit_end"]
+    assert "target" in data["series"]["EURUSD"] and "level" in data["series"]["EURUSD"]        # the Finder tab's inputs
+    assert data["tables"]["EURUSD"]["finder_report"]
+
+
 def test_duplicate_pair_is_refused(dumped, tmp_path):
     with pytest.raises(SystemExit, match="appears twice"):
         view.build([dumped, dumped], tmp_path / "dup.html")

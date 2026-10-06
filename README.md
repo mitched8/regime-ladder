@@ -31,7 +31,7 @@ python -m regime_ladder shock|transitions|leading ...   # the Phase 4 pieces on 
 python -m regime_ladder inspect --market market.parquet [--td trade_days.parquet]   # every derived input, one file each, with a README
 python -m regime_ladder pack --stage leading --src out/inspect --market market.parquet   # one review packet for a reviewer without the code
 python -m regime_ladder sweep --market market.parquet --td trade_days.parquet --pair EURUSD      # states in isolation: labeller variants scored on one frozen trade table, Gate 2 on a window the finder never saw
-python -m regime_ladder view --src out/inspect --out out/view.html                     # one self-contained HTML page over the inspect output: compare strategies, tenors, pairs and entry states
+python -m regime_ladder view --src out/inspect [--sweep out/sweep] --out out/view.html   # one self-contained HTML page: compare strategies, tenors, pairs and entry states; Finder and Sweep tabs show the states fit
 ```
 
 ## Read

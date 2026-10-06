@@ -16,7 +16,7 @@ def dumped(tmp_path_factory):
 
 
 @pytest.mark.parametrize("stage,sections", [
-    ("states", ["## 1. Chosen spec", "## 3. States", "## 5.", "## 6. Transition matrix", "Features warm up until"]),
+    ("states", ["## 1. Chosen spec", "## 2b. What the finder saw", "## 2c. Mean target by named state", "## 3. States", "## 5.", "## 6. Transition matrix", "Features warm up until"]),
     ("ladder", ["## 1. Gates", "Gate 3:", "## 2. Ladder at h = 1, 5, 10", "## 5. Walk-forward"]),
     ("leading", ["## 1. Gate 4", "## 2. Screen", "## 6. Lead profile", "## 7. Every move into the high band", "## 8b. Alignment check"]),
 ])
@@ -53,3 +53,13 @@ def test_alignment_flags_a_future_value():
     a = pack.alignment(L, m)
     assert a.loc["late", "k=+10"] > 0.99 and a.loc["late", "k=+10"] > a.loc["late", "k=+0"] + 0.3
     assert a.loc["honest", "k=+10"] < a.loc["honest", "k=+0"]
+
+
+def test_sweep_packet(dumped, tmp_path):
+    from regime_ladder import sweep as sweep_
+    _, m, td = dumped
+    sw = tmp_path / "sweep"
+    sweep_.run(m, td, "EURUSD", {"variants": [{"name": "base"}, {"name": "level_only", "states": "3"}]}, gates.load_gates("configs/gates.yaml"), sw)
+    text = pack.build("sweep", tmp_path / "sweep_packet", src=sw).read_text()
+    for s in ("## 1. Variants", "gate2_confirm", "## 2. Share of days per state by year", "## 3. How far each variant", "level_only"):
+        assert s in text, s

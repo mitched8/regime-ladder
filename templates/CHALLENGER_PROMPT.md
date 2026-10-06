@@ -58,7 +58,7 @@ Step 1 — generic checks, every stage:
   G5 Warm-up and edges. Values before features are valid, the first and last weeks of the sample,
      stretches of a constant value.
 
-Step 2 — the checklist for this packet's stage (the header names it):
+Step 2 — the checklist for this packet's stage (the header names it: data, states, sweep, ladder, leading):
 
   data
     D1 Integrity lines all PASS; any info_ line explained.
@@ -71,6 +71,9 @@ Step 2 — the checklist for this packet's stage (the header names it):
     D6 Package reconciliation R² near 1 with stable coefficients, or say why not.
 
   states
+    S0 Section 2b/2c (what the finder saw): do the targets step at the bounds, or drift through them? Do the
+       level bands separate the P&L target while the direction bands do not (then the direction axis is not
+       earning its place)? Is the high band's separation carried by a handful of days (n small, s.e. wide)?
     S1 Spec: bounds inside the composite's range; switches per year within budget; partition choice
        versus the challenger partitions' R² — is the margin meaningful or noise?
     S2 Durations: implied/observed ratio 0.6-1.5 for every state; flag the outliers.
@@ -93,6 +96,23 @@ Step 2 — the checklist for this packet's stage (the header names it):
     L5 Walk-forward: improvement, rank IC and calibration slope by h; where does it fail?
     L6 The trader question: which two or three cells would change how a market-maker carries
        inventory today, and how much would you trust each?
+
+  sweep (labeller variants on one frozen trade table; the owner is choosing the states spec)
+    W1 Reading order: gate2_confirm first, then the fit-to-confirm drop. A variant whose fit is high and
+       whose confirm is far lower has fitted its window; say so by name. Differences under 0.08 in these
+       fractions (two cells of 24) are noise.
+    W2 Which axis earns its place: compare the level-only variant with the six-state ones on confirm. If
+       they tie, say that the direction axis is not supported by this data and the simpler partition should
+       be adopted unless the owner names a reason.
+    W3 Grid edge and fallback flags: any adopted candidate with on_grid_edge true needs a wider grid before
+       adoption; fell_back true means the variant did not test what it was asked to.
+    W4 Stability: agreement_with_first and the section-3 label shifts. A variant that moves a quarter of the
+       days is a different model, not a tuning; weigh its confirm gain against that.
+    W5 Plausibility: switches per year (10-25 is the design range), thinnest state (>= 5 episodes), duration
+       ratios in 0.6-1.5, straddle high-minus-low positive. A variant that wins confirm by violating these is
+       not adoptable.
+    W6 Recommend at most one variant to adopt, or none, and name the single next sweep (one new axis) if the
+       table does not settle it. Do not propose a second sweep on the same axes.
 
   leading
     E1 Gate 4 follows from the screen and the pressure gain.

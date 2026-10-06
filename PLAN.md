@@ -80,7 +80,7 @@ review (`templates/REVIEWER_PROMPT.md`) still covers the diff; the challenger co
 | 08d | Tags | `tags.py`, `configs/default.yaml › tags` | corr-sign, pinned, event-window (calendar from the adapter) and, for the configured pairs, intervention-risk tags on the real frame; episode counts per (state, tag) cell; which cells split | all tags pass the truncation test; cell table saved; intervention thresholds per pair recorded in `configs/local.yaml` | routine | todo |
 | 09 | Separation report | `ladder.py`, `gates.py` | ladder at h ≤ 10 with real labels; `out/gate_phase2.json`; plots | gate evaluated and written; sign stability across sub-periods tabulated | routine | todo |
 
-**Gate 2 (owner, 30 min):** separation. Pass → Phase 3. Fail → first look at detection lag (compare label-switch dates with the mark moves), then run `python -m regime_ladder sweep` (labeller variants on the frozen trade table, Gate 2 on a confirm window the finder never saw; `configs/sweep.yaml`) and adopt one variant with a DECISIONS line; do not loosen `gates.yaml`.
+**Gate 2 (owner, 30 min):** separation. Pass → Phase 3. Fail → first look at detection lag (compare label-switch dates with the mark moves), then open the Finder tab of `view` (what the fit saw), run `python -m regime_ladder sweep` (labeller variants on the frozen trade table, Gate 2 on a confirm window the finder never saw; `configs/sweep.yaml`), hand `pack --stage sweep` to the challenger, and adopt one variant with a DECISIONS line; do not loosen `gates.yaml`.
 
 ## Phase 3 — The ladder product
 
