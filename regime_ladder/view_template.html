@@ -58,7 +58,7 @@ tr.hi td{background:#eef7f1} tr.dimr td{color:var(--muted)}
 <header><h1 id="title"></h1><span class="dim" id="sub"></span></header>
 <nav id="nav"></nav>
 <div id="filters"></div>
-<main id="main"></main>
+<main id="main"><noscript><div class="empty">This page draws everything with JavaScript. Open it in a browser with scripts enabled (download the file and open it in Chrome or Edge).</div></noscript><div class="empty" id="boot">Loading…</div></main>
 <script id="data" type="application/json">__DATA__</script>
 <script>
 'use strict';
@@ -509,7 +509,7 @@ function maskOf(X, c) { const d = X.stats.data[c.stat]; return d.map(x => x === 
 function clauseText(c) { return c.op === 'in' ? `${c.stat} in {${[...c.cats].join(', ')}}` : c.op === 'between' ? `${c.v1} ≤ ${c.stat} ≤ ${c.v2}` : `${c.stat} ${c.op} ${c.v1}`; }
 function clauseYaml(c) { return c.op === 'in' ? `{stat: ${c.stat}, op: 'in', value: [${[...c.cats].join(', ')}]}` : c.op === 'between' ? `{stat: ${c.stat}, op: 'between', value: [${c.v1}, ${c.v2}]}` : `{stat: ${c.stat}, op: '${c.op}', value: ${c.v1}}`; }
 function ewma(pts, hl) { const a = 1 - Math.exp(Math.log(0.5) / Math.max(1, hl)); let m = null; return pts.map(p => { if (p.y === null) return {xi: p.xi, y: m}; m = m === null ? p.y : a * p.y + (1 - a) * m; return {xi: p.xi, y: m}; }); }
-function summ(vals, h) { const v = vals.filter(x => x !== null && !Number.isNaN(x)); if (v.length < 2) return {mean: v[0] ?? null, se: null, n: v.length}; const mu = sum(v) / v.length, sd = Math.sqrt(sum(v.map(x => (x - mu) ** 2)) / (v.length - 1)); return {mean: mu, se: sd / Math.sqrt(v.length) * Math.sqrt(Math.max(1, h)), n: v.length}; }  /* s.e. × √h: consecutive h-day earns overlap */
+function summ(vals, h) { const v = vals.filter(x => x !== null && !Number.isNaN(x)); if (v.length < 2) return {mean: v.length ? v[0] : null, se: null, n: v.length}; const mu = sum(v) / v.length, sd = Math.sqrt(sum(v.map(x => (x - mu) ** 2)) / (v.length - 1)); return {mean: mu, se: sd / Math.sqrt(v.length) * Math.sqrt(Math.max(1, h)), n: v.length}; }  /* s.e. × √h: consecutive h-day earns overlap */
 function rows(E, h) { const out = []; for (let i = 0; i < E.di.length; i++) if (h === 'exp' ? E.exp[i] : (E.h[i] === h && !E.exp[i])) out.push(i); return out; }
 function split(E, idx, mask) { const on = [], off = []; for (const i of idx) (mask[E.di[i]] ? on : off).push(i); return {on, off}; }
 function runsOf(E, idx, mask) { let r = 0, prev = false; for (const i of idx) { const m = mask[E.di[i]]; if (m && !prev) r++; prev = m; } return r; }
@@ -613,6 +613,9 @@ function tabExplore() {
 /* ---------- wiring ---------- */
 function setPath(path, v) { const ks = path.split('.'); let o = U; for (const k of ks.slice(0, -1)) o = o[k]; o[ks[ks.length - 1]] = v; }
 function render() {
+  try { renderInner(); } catch (e) { document.getElementById('main').innerHTML = `<div class="empty">The page hit an error while drawing the <b>${esc(U.tab)}</b> tab: <code>${esc(e && e.message ? e.message : e)}</code><br>Other tabs may still work. Report this line with the inspect folder it came from.</div>`; console.error(e); }
+}
+function renderInner() {
   document.getElementById('nav').innerHTML = TABS.map(([k, l]) => `<button class="${U.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('');
   filterBar();
   const main = document.getElementById('main');
