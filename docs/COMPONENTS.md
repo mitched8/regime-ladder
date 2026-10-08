@@ -119,6 +119,39 @@ and the finder's whole grid with the chosen cell marked. `pack --stage sweep --s
 for the challenger (checklist W1–W6). Adopt one variant into `configs/default.yaml › labeller` with a DECISIONS line, then
 stop sweeping: every run reads the same forward P&L.
 
+## The explorer: one object, one operation
+
+The Explore tab of `view` is the front door. The object is the per-entry table `inspect` writes to
+`entries.csv`: for every fresh unit entered on a date, its cumulative P&L at each horizon, total and by
+component, divided by the unit's own vega at inception (or notional). The operation is to condition on a
+daily statistic from `statistics.csv` (about 70 of them: surface and spot, the state features, the state
+score and named state, the leading candidates, the shock detectors, the profile characteristics, and the
+strategy's own recent earn), with a threshold the trader sets: "entries made when the ATM z-score was
+above 2". The named states, the tags and the finder are all instances of that operation.
+
+Every condition carries its own honesty: n and the number of runs it was on; on-minus-off with an
+overlap-adjusted interval; the same difference on the first 70% and the last 30% of the history; and a
+reference band from 200 circular shifts of the condition's own mask (same on-fraction, same run lengths),
+so "unusual" means unusual for a condition of that shape and not merely non-zero. Drivers are the
+components, on against off.
+
+Below the condition, **across the values of a statistic** cuts the same earn into equal-count buckets of any
+statistic (terciles to deciles; the categories, for a categorical one): mean earn with its interval per bucket,
+first 70% against last 30%, runs, the components, and the rank correlation of bucket order with earn. A
+monotone pattern across buckets is harder to get by chance than one good bucket. Clicking a bucket makes it
+the condition.
+
+**Adding a statistic** takes one of three steps, in order of effort: a raw market column goes under
+`explore: passthrough:` in the config with a one-line definition; a function of the market frame goes in
+`explore.EXTRA` as `name: (fn, definition, group)`, trailing data only (the truncation test covers every
+entry); site-specific series (flow, positioning) go in an untracked `adapters/statistics.py` exposing
+`extra(market) -> (frame, definitions)`, which is imported if present and never committed. Rerun `inspect`
+and the statistic is in every dropdown.
+
+A condition worth keeping is saved as a few lines of YAML under `filters:` in the config. `inspect` turns
+it into a tag (`explore.filters_to_tags`), so it splits the ladder's cells, appears in the packets and is
+tested by the walk-forward like any other tag. Nothing reaches the card from the explorer directly.
+
 ## Looking at the results without a notebook
 
 `python -m regime_ladder view --src out/inspect [--src out/inspect_usdjpy ...] --out out/view.html`
@@ -129,6 +162,7 @@ number on the page is in an `inspect` file.
 
 | tab | what it shows | the question it answers |
 |---|---|---|
+| Explore | the per-entry earn series with an EWMA and components, any statistic with a threshold, on vs off by horizon and by component, the honesty panel, save-as-filter | what conditions at entry change the earn of this strategy, and is that more than a random condition of the same shape would show |
 | Overview | today's state per pair, the chosen spec, gate results, retained leading features, the strongest clean cells at h=5 | where does the project stand |
 | Ladder | pivot over the ladder: any of pair, strategy, tenor and entry state as lines or panels, horizon or tenor on the x axis, EV / shrunk EV / P(profit) / quantiles / ES / earn per day, optionally minus the unconditional row, with the interval band | how do strategies, tenors and pairs compare conditional on the entry state |
 | Matrix | rows = pair × strategy × tenor, columns = entry states, value at a chosen horizon, thin cells marked, today's state outlined; click a cell for its ladder | what would I carry today |

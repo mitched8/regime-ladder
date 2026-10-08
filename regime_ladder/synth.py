@@ -214,7 +214,7 @@ def simulate_trades(market: pd.DataFrame, archetypes=DEMO_ARCHETYPES, tenor_days
     rows = []
     for a in archetypes:
         for i in range(n - tenor_days):
-            tid, eps = f"{pair}-{a}-{dates[i].date()}", 0.0
+            tid, eps = f"{pair}-{a}-{tenor_days}d-{dates[i].date()}", 0.0
             for age in range(1, tenor_days + 1):
                 d = i + age
                 eps = ar * eps + rng.normal(0, sigma_idio)

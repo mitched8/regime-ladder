@@ -25,6 +25,16 @@ eval:
   n_splits: 4                     # walk-forward test windows after a 40% initial training block
   kappa: 0                        # 0 scores raw state means; set to the ladder's kappa to score the shrunk estimate the card shows
 
+explore:
+  passthrough: {}                 # raw market columns to offer in the Explore tab as they are: {column: "one-line definition"}
+                                  # e.g. {rr25_3m: "3m 25d risk reversal, vol points"}; functions of the frame go in explore.EXTRA,
+                                  # site series in the untracked adapters/statistics.py (see docs/COMPONENTS.md)
+
+filters: {}                       # conditions saved from the Explore tab (view), each {stat, op, value[, and: [...]]}; they become
+                                  # tags ('on' / 'none') in inspect, split the ladder's cells and appear in the packets. Example:
+                                  #   hi_vol_z2: {stat: atm_1m_z252, op: '>', value: 2}
+                                  #   cheap_rv_stressed: {stat: rv_iv_1m, op: '<', value: 0.8, and: [{stat: regime, op: 'in', value: [stressed]}]}
+
 tags:                             # qualifiers that split a state's ladder where the (state, tag) cell has enough episodes (tags.py)
   min_episodes: 5                 # a tagged cell with fewer episodes collapses back to its parent state
   corr_sign: {window: 21, band: 0.2, delta: 0.05}        # sign of trailing spot-vol correlation: neg / flat / pos

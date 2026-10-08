@@ -33,6 +33,15 @@ side needs the backtester API and runs alongside. They join when the finder is r
 sub-states need it), WU-08d (tags), WU-05 (second pair; add once the first is clean), WU-12 and
 WU-13 (age-dependence and robustness; only if Gate 3 is promising).
 
+## The explorer first
+
+After `inspect` on real data, the owner's first look is the Explore tab of `view` (`docs/COMPONENTS.md ›
+The explorer`): the per-entry earn of each strategy over time, by component, conditioned on any statistic
+with a threshold, with the honesty panel (runs, overlap-adjusted interval, first 70% vs last 30%, random
+conditions of the same shape). Conditions worth keeping go to `filters:` in the config and become tags.
+The finder, the sweep and the gates then test what the explorer suggested; nothing goes on the card from
+the explorer directly.
+
 ## Review loop
 
 After each bold **packet** step: `python -m regime_ladder inspect ...`, then
@@ -75,7 +84,7 @@ review (`templates/REVIEWER_PROMPT.md`) still covers the diff; the challenger co
 
 | WU | Goal | Reads | Produces | Acceptance | Model | Status |
 |---|---|---|---|---|---|---|
-| 07 | Features on real data | `features.py`, `docs/COMPONENTS.md`, WU-06 adapter | `python -m regime_ladder inspect` run on the real frame (every derived input as a file, in `out/inspect/<pair>/`); plots and descriptive stats per feature per pair; existing feature sub-components wrapped as functions with `asof` and added to `FEATURES` | all registered features pass `test_pit_truncation`; no feature uses a centred or full-sample statistic; owner has looked at `features.csv`, `composite.csv` and `finder_report.csv` | routine | todo |
+| 07 | Features on real data | `features.py`, `docs/COMPONENTS.md`, WU-06 adapter | `python -m regime_ladder inspect --td ...` run on the real frame (every derived input as a file, in `out/inspect/<pair>/`, including `entries.csv` and `statistics.csv`), then `view`; existing feature sub-components wrapped as functions with `asof` and added to `FEATURES` | all registered features pass `test_pit_truncation`; no feature uses a centred or full-sample statistic; owner has opened the Explore tab and looked at `features.csv`, `composite.csv` and `finder_report.csv` | routine | todo |
 | 08 | Labeller calibration | `labels.py`, `configs/default.yaml` | composite + EWMA; `calibrate_states` **inside walk-forward training windows**: level bounds step-fitted on forward ATM (whole history), extreme bound as tail quantile, partition 3 / 6 / 6x and hysteresis chosen on forward P&L under the switch budget; label history per pair; durations, transition matrix, episodes; extreme merged or kept by the episode rule | label history saved with fold boundaries logged; durations vs geometric reported; episodes per state ≥ 5 or flagged; states packet passed by the challenger; D11 closed (first pass on the forward-surface target; rerun on forward P&L at the join) | judgement | todo |
 | 08d | Tags | `tags.py`, `configs/default.yaml › tags` | corr-sign, pinned, event-window (calendar from the adapter) and, for the configured pairs, intervention-risk tags on the real frame; episode counts per (state, tag) cell; which cells split | all tags pass the truncation test; cell table saved; intervention thresholds per pair recorded in `configs/local.yaml` | routine | todo |
 | 09 | Separation report | `ladder.py`, `gates.py` | ladder at h ≤ 10 with real labels; `out/gate_phase2.json`; plots | gate evaluated and written; sign stability across sub-periods tabulated | routine | todo |

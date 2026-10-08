@@ -6,6 +6,7 @@ Updated at the end of every session. The next session starts by reading this fil
 WU-00 — Localise — status: todo
 
 ## Done (this session)
+- Explorer (`regime_ladder/explore.py`, Explore tab of `view`): per-entry earn table normalised per vega at inception with components (`entries.csv`), ~70 daily statistics with one-line definitions (`statistics.csv`, `statistics_defs.json`), condition on any statistic with a threshold (AND a second), on vs off by horizon and component, honesty panel (runs, overlap-adjusted s.e., first 70% / last 30%, 200 circular shifts of the mask), save as YAML; auto-bucket table across any statistic (equal-count buckets, per-bucket interval, fit/confirm, components, rank correlation; click a bucket to make it the condition); statistics are added by config passthrough, `explore.EXTRA`, or the untracked `adapters/statistics.py`; `filters:` in the config become tags in `inspect` (`filter_tags.csv`, tag cells). Fix: `ladder.cumulative` and synth trade ids were not unique across tenors (cumsum mixed two trades sharing an id); grouped by (pair, archetype, tenor, id) and ids now carry the tenor. `tests/test_explore.py`.
 - Finder tab in `view` (targets by composite decile with the bounds, separation by state and by each axis alone, the finder's grid with the chosen cell) and Sweep tab (`view --sweep`); `inspect` writes `finder_inputs.csv`; states packet gains sections 2b/2c; `pack --stage sweep`; challenger checklist S0 and W1–W6.
 - `sweep` command (`regime_ladder/sweep.py`, `configs/sweep.yaml`): the states component on its own — labeller variants scored on one frozen trade table, finder calibrated on the first 70%, Gate 2 reported on fit and confirm windows, spec-on-grid-edge and partition-fallback flags, labels per variant. 9 variants in ~25 s on ten synthetic years. `tests/test_sweep.py`.
 - `view` command (`regime_ladder/view.py` + `view_template.html`): one self-contained HTML page over one or more inspect folders. Ladder / Matrix / Out-of-sample tabs are pivots over pair × strategy × tenor × entry state × horizon; States / Transitions / Shock / Leading show one pair's series over the state bands. No server, no network, nothing recomputed. `tests/test_view.py`.
@@ -36,7 +37,7 @@ WU-00 — Localise — status: todo
 
 ## Last test run
 ```
-117 passed (pytest -q, ~6 min)
+121 passed (pytest -q, ~7 min)
 ```
 
 ## Data as-of

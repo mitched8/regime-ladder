@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from . import discover, evaluate, features, gates, labels, ladder, leading, profile, schema, shock, tags, transitions
+from . import discover, evaluate, explore, features, gates, labels, ladder, leading, profile, schema, shock, tags, transitions
 
 FILES = []  # (filename, produced by, what it is) — filled as dump runs, written to README.md
 
@@ -28,7 +28,7 @@ def _w(out: Path, name: str, obj, by: str, what: str, **kw):
         obj.to_csv(p, **kw)
     else:
         p.write_text(json.dumps(obj, indent=2, default=lambda v: float(v) if isinstance(v, (np.floating, np.integer)) else str(v)))
-    FILES.append((name, by, what))
+    FILES[:] = [f for f in FILES if f[0] != name] + [(name, by, what)]
 
 
 def dump(market: pd.DataFrame, cfg: dict, pcfg: dict, lcfg: dict, gates_cfg: dict, pair: str, out: str | Path,
@@ -59,7 +59,8 @@ def dump(market: pd.DataFrame, cfg: dict, pcfg: dict, lcfg: dict, gates_cfg: dic
     lab = labels.apply_spec(comp, spec)
     sc = labels.ewma(comp, spec["halflife"]); ds = labels.direction_score(sc, spec["dir_window"])
     lv = labels.level_labels(sc, spec["bounds"], spec["delta"]); dr = labels.direction_labels(ds, spec["d_down"], spec["d_up"], spec["delta_d"])
-    _w(out, "composite.csv", pd.DataFrame({"composite": comp, "smoothed": sc, "direction_score": ds, "level": lv, "direction": dr, "regime": lab}),
+    comp_frame = pd.DataFrame({"composite": comp, "smoothed": sc, "direction_score": ds, "level": lv, "direction": dr, "regime": lab})
+    _w(out, "composite.csv", comp_frame,
        "labels.composite / ewma / direction_score / level_labels / direction_labels / apply_spec", "the labeller step by step: raw composite, EWMA, slope, level band, direction band, named state")
     _w(out, "finder_inputs.csv", pd.DataFrame({"target": target.reindex(comp.index), "level_target": lvl.reindex(comp.index)}),
        "the finder's two targets", f"what the finder scored against, per day: `target` [{tname}] for partition / direction / hysteresis, `level_target` (forward {c.get('level_target', 'atm_1m')}, {int(c.get('level_horizon', 5))}d ahead) for the level bounds")
@@ -151,6 +152,22 @@ def dump(market: pd.DataFrame, cfg: dict, pcfg: dict, lcfg: dict, gates_cfg: dic
         wf = evaluate.walk_forward(cum, n_splits=cfg["eval"]["n_splits"], kappa=cfg["eval"].get("kappa", 0.0))
         _w(out, "walk_forward.csv", wf, "evaluate.walk_forward(cum)", "out-of-sample state ladder vs unconditional, per group and h", index=False)
         _w(out, "gate_phase3.json", gates.gate_phase3(wf, gates_cfg), "gates.gate_phase3(walk_forward)", "Gate 3: out-of-sample improvement, rank IC, calibration slope")
+    # 9 · the explorer's tables: per-entry normalised earn, and every statistic a trader can condition on
+    ent = explore.entries(td, horizons=tuple(h for h in cfg["horizons"] if h <= 20) or explore.HORIZONS) if td is not None else None
+    if ent is not None:
+        _w(out, "entries.csv", ent, "explore.entries(td)", f"one row per entry date × horizon per group: cumulative earn of a fresh unit, total and by component, normalised by {ent.attrs['normalised_by']} at inception", index=False)
+    stats, sdefs = explore.statistics(market, F, comp_frame, L, S, ch, ent, cfg=cfg.get("explore"))
+    _w(out, "statistics.csv", stats, "explore.statistics(market, features, composite, leading, shock, characteristics, entries)", "every daily statistic the explorer can condition on (point-in-time); definitions in statistics_defs.json")
+    _w(out, "statistics_defs.json", {**sdefs, "normalised_by": ent.attrs["normalised_by"] if ent is not None else None, "components": ent.attrs["components"] if ent is not None else []},
+       "explore.statistics(...)[1]", "one-line definition and group per statistic")
+    if cfg.get("filters"):
+        FT = explore.filters_to_tags(stats, cfg["filters"])
+        _w(out, "filter_tags.csv", FT, "explore.filters_to_tags(statistics, cfg['filters'])", "saved explorer filters as tags ('on' / 'none'), one column per filter")
+        fcells = {}
+        for col in FT.columns:
+            _, info = tags.tag_split(lab, FT[col], cfg.get("tags", {}).get("min_episodes", 5)); fcells[col] = info
+        prior = json.loads((out / "tag_cells.json").read_text()) if (out / "tag_cells.json").exists() else {}
+        _w(out, "tag_cells.json", {**prior, **fcells}, "tags.tag_split(labels, tag)", "episodes and days per state·tag cell (configured tags and saved filters) and whether it is kept")
     _w(out, "meta.json", {"pair": pair, "first_date": str(market.index[0].date()), "last_date": str(market.index[-1].date()), "days": len(market),
                           "finder_target": tname, "leading_target": tname, "trade_table": td is not None, "today_state": lab.iloc[-1]},
        "inspect.dump", "what this dump was run on")

@@ -22,7 +22,7 @@ GROUP = ["pair", "archetype", "tenor_days"]
 def cumulative(td: pd.DataFrame, horizons=HORIZONS, include_expiry: bool = True) -> pd.DataFrame:
     """Cumulative P&L of each trade at each horizon h <= tenor (plus to-expiry)."""
     td = td.sort_values(["trade_id", "age"])
-    td = td.assign(cum_pnl=td.groupby("trade_id")["pnl"].cumsum())
+    td = td.assign(cum_pnl=td.groupby(GROUP + ["trade_id"])["pnl"].cumsum())      # ids are unique within a group, not necessarily across
     keep = td["age"].isin(horizons)
     if include_expiry:
         keep |= td["age"] == td["tenor_days"]

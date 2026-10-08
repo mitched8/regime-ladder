@@ -67,6 +67,9 @@ def test_sweep_tab_data(dumped, tmp_path):
     assert len(data["sweep"]["strips"]["base"]) == 1500 and data["sweep"]["fit_end"]
     assert "target" in data["series"]["EURUSD"] and "level" in data["series"]["EURUSD"]        # the Finder tab's inputs
     assert data["tables"]["EURUSD"]["finder_report"]
+    X = data["tables"]["EURUSD"]["explore"]                                          # the Explore tab's tables
+    assert X["normalised_by"] == "vega" and "atm_1m_z252" in X["stats"]["cols"] and X["stats"]["defs"]["rv_iv_1m"]
+    k = "straddle_atm|21"; assert k in X["entries"] and len(X["entries"][k]["di"]) == len(X["entries"][k]["earn"]) and "earn_trade" in X["entries"][k]["comps"]
 
 
 def test_duplicate_pair_is_refused(dumped, tmp_path):

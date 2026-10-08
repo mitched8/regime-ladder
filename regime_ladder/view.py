@@ -87,6 +87,33 @@ def _pair_name(f: Path) -> str:
     return f.name
 
 
+def _explore(f: Path, idx: pd.DatetimeIndex) -> dict | None:
+    """Column-oriented copies of statistics.csv and entries.csv for the Explore tab (entries keyed by archetype|tenor,
+    dates as positions in the page's date index)."""
+    st = _csv(f / "statistics.csv", index_col=0, parse_dates=True)
+    if st is None:
+        return None
+    st = st.reindex(idx)
+    defs = _json(f / "statistics_defs.json") or {}
+    data = {}
+    for c in st.columns:
+        col = st[c]
+        data[c] = [None if (isinstance(x, float) and math.isnan(x)) or x is None else (x if isinstance(x, str) else round(float(x), 4)) for x in col.tolist()]
+    out = {"stats": {"cols": list(st.columns), "data": data, "defs": defs.get("defs", {}), "groups": defs.get("groups", {})},
+           "normalised_by": defs.get("normalised_by"), "components": defs.get("components", []), "entries": {}}
+    ent = _csv(f / "entries.csv", parse_dates=["entry_date"])
+    if ent is not None and len(ent):
+        pos = pd.Series(np.arange(len(idx)), index=idx)
+        ent["di"] = pos.reindex(ent["entry_date"]).values
+        ent = ent.dropna(subset=["di"])
+        comps = [c for c in out["components"] if c in ent.columns]
+        for (a, tn), g in ent.groupby(["archetype", "tenor_days"]):
+            g = g.sort_values(["di", "h"])
+            out["entries"][f"{a}|{int(tn)}"] = {"di": g["di"].astype(int).tolist(), "h": g["h"].astype(int).tolist(), "exp": g["to_expiry"].astype(int).tolist(),
+                                                 "earn": [round(float(x), 4) for x in g["earn"]], "comps": {c: [round(float(x), 4) for x in g[c]] for c in comps}}
+    return out
+
+
 def one_pair(f: Path) -> tuple[str, dict, dict, dict]:
     """(pair, daily series, per-pair tables, ladder tables) for one inspect folder."""
     pair = _pair_name(f)
@@ -127,6 +154,7 @@ def one_pair(f: Path) -> tuple[str, dict, dict, dict]:
         "gates": {k: _json(f / f"gate_{k}.json") for k in ("phase2", "phase3", "phase4") if (f / f"gate_{k}.json").exists()},
         "tag_cells": _json(f / "tag_cells.json"),
         "discovery": _json(f / "discovery.json"),
+        "explore": _explore(f, idx),
     }
     lad = _csv(f / "ladder.csv")
     ladders = {

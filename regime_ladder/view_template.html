@@ -70,7 +70,8 @@ const DASH = ['', '7 4', '2 3', '9 3 2 3', '14 4', '4 2 1 2'];
 const LAB = {pair:'pair', archetype:'strategy', tenor_days:'tenor', regime:'entry state', h:'horizon'};
 const LADDER_METRICS = [['mean_shrunk','EV, shrunk'],['mean','EV'],['p_profit','P(profit)'],['q50','median'],['q05','5th pct'],['q95','95th pct'],['es05','ES 5%'],['se','standard error'],['n_eff','n_eff'],['episodes','episodes'],['earn_per_day','earn per day (increments)']];
 const WF_METRICS = [['improvement','MSE improvement vs unconditional'],['rank_ic','rank IC'],['calib_slope','calibration slope'],['n_test','n_test']];
-const TABS = [['overview','Overview'],['ladder','Ladder'],['matrix','Matrix'],['oos','Out of sample'],['states','States'],['finder','Finder'],['transitions','Transitions'],['shock','Shock'],['leading','Leading']].concat(D.sweep ? [['sweep','Sweep']] : []);
+const HAS_EXPLORE = D.pairs.some(p => D.tables[p].explore && Object.keys(D.tables[p].explore.entries || {}).length);
+const TABS = (HAS_EXPLORE ? [['explore','Explore']] : []).concat([['overview','Overview'],['ladder','Ladder'],['matrix','Matrix'],['oos','Out of sample'],['states','States'],['finder','Finder'],['transitions','Transitions'],['shock','Shock'],['leading','Leading']]).concat(D.sweep ? [['sweep','Sweep']] : []);
 
 const HAS_LADDER = D.ladder && D.ladder.length > 0;
 const cmp = k => (a, b) => k === 'regime' ? ORDER.indexOf(a) - ORDER.indexOf(b) : (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b)));
@@ -80,7 +81,8 @@ const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
 const sum = a => a.reduce((x, y) => x + y, 0);
 
 const U = {
-  tab: 'overview', pair: D.pairs[0], sort: {},
+  tab: HAS_EXPLORE ? 'explore' : 'overview', pair: D.pairs[0], sort: {},
+  ex: {key: null, h: 5, hl: 20, comps: false, c1: null, c2: null, and2: false, saved: [], bstat: null, nb: 5},
   f: {pair: new Set([D.pairs[0]]),
       archetype: new Set(HAS_LADDER ? uniq(D.ladder, 'archetype') : []),
       tenor_days: new Set(HAS_LADDER ? [uniq(D.ladder, 'tenor_days')[0]] : []),
@@ -110,7 +112,7 @@ function svgLines(series, opt) {
   const pad = (hi - lo) * 0.06; if (!opt.pct && !opt.unit) { lo -= pad; hi += pad; }
   const ys = v => m.t + ih - (v - lo) / (hi - lo) * ih;
   let g = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
-  if (opt.bands) for (const b of opt.bands) g += `<rect x="${xe(b.i0).toFixed(1)}" y="${m.t}" width="${(xe(b.i1 + 1) - xe(b.i0)).toFixed(1)}" height="${ih}" fill="${COL[b.state] || '#ccc'}" opacity="0.13"/>`;
+  if (opt.bands) for (const b of opt.bands) g += `<rect x="${xe(b.i0).toFixed(1)}" y="${m.t}" width="${(xe(b.i1 + 1) - xe(b.i0)).toFixed(1)}" height="${ih}" fill="${b.colour || COL[b.state] || '#ccc'}" opacity="${b.opacity || 0.13}"/>`;
   for (const t of niceTicks(lo, hi)) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${ys(t).toFixed(1)}" y2="${ys(t).toFixed(1)}" stroke="${t === 0 ? '#555' : '#e6e8ec'}" stroke-width="${t === 0 ? 1 : 0.8}"/><text x="${m.l - 6}" y="${(ys(t) + 3.5).toFixed(1)}" text-anchor="end">${fmt(t, Math.abs(t) < 1 && t !== 0 ? 2 : (Math.abs(t) < 10 ? 1 : 0))}</text>`;
   if (opt.vlines) for (const l of opt.vlines) { const X = (m.l + (l.xi + 0.5) * iw / n).toFixed(1); g += `<line x1="${X}" x2="${X}" y1="${m.t}" y2="${m.t + ih}" stroke="${l.colour || '#1a1d23'}" stroke-dasharray="5 3"/><text x="${X}" y="${m.t - 2}" text-anchor="middle">${esc(l.label || '')}</text>`; }
   if (opt.hlines) for (const l of opt.hlines) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${ys(l.y).toFixed(1)}" y2="${ys(l.y).toFixed(1)}" stroke="${l.colour || '#999'}" stroke-dasharray="4 3"/><text x="${W - m.r - 2}" y="${(ys(l.y) - 3).toFixed(1)}" text-anchor="end">${esc(l.label || '')}</text>`;
@@ -125,6 +127,7 @@ function svgLines(series, opt) {
       const dn = s.pts.filter(p => has(p) && p.lo !== null).map(p => `${xs(p.xi).toFixed(1)},${ys(p.lo).toFixed(1)}`).reverse();
       if (up.length > 1) g += `<polygon points="${up.concat(dn).join(' ')}" fill="${s.colour}" opacity="0.12"/>`;
     }
+    if (s.scatter) { for (const p of s.pts) if (has(p)) g += `<circle cx="${xs(p.xi).toFixed(1)}" cy="${ys(p.y).toFixed(1)}" r="${s.r || 1.7}" fill="${s.colour}" opacity="${s.opacity || 0.45}"><title>${esc(p.tip || '')}</title></circle>`; continue; }
     let d = '', pen = false;
     for (const p of s.pts) { if (!has(p)) { pen = false; continue; } d += `${pen ? 'L' : 'M'}${xs(p.xi).toFixed(1)} ${ys(p.y).toFixed(1)}`; pen = true; }
     g += `<path d="${d}" fill="none" stroke="${s.colour}" stroke-width="${s.width || 1.8}" ${s.dash ? `stroke-dasharray="${s.dash}"` : ''} stroke-linejoin="round"/>`;
@@ -494,13 +497,126 @@ function tabSweep() {
   return h;
 }
 
+/* ---------- Explore: one object (per-entry earn), one operation (condition on a statistic) ---------- */
+function quantile(arr, q) { const v = arr.filter(x => x !== null && !Number.isNaN(x)).sort((a, b) => a - b); if (!v.length) return 0; return v[Math.min(v.length - 1, Math.floor(q * v.length))]; }
+function isCat(X, st) { return X.stats.data[st].some(x => typeof x === 'string'); }
+function defaultClause(X, st) {
+  const cat = isCat(X, st); const d = X.stats.data[st];
+  if (cat) { const cats = [...new Set(d.filter(x => x !== null))].sort(cmp(st === 'regime' ? 'regime' : 'x')); return {stat: st, op: 'in', cats: new Set([cats[cats.length - 1]]), v1: 0, v2: 0}; }
+  return {stat: st, op: '>', v1: +quantile(d, 0.8).toFixed(3), v2: +quantile(d, 0.95).toFixed(3), cats: new Set()};
+}
+function maskOf(X, c) { const d = X.stats.data[c.stat]; return d.map(x => x === null ? false : c.op === '>' ? x > c.v1 : c.op === '<' ? x < c.v1 : c.op === 'between' ? (x >= c.v1 && x <= c.v2) : c.cats.has(x)); }
+function clauseText(c) { return c.op === 'in' ? `${c.stat} in {${[...c.cats].join(', ')}}` : c.op === 'between' ? `${c.v1} ≤ ${c.stat} ≤ ${c.v2}` : `${c.stat} ${c.op} ${c.v1}`; }
+function clauseYaml(c) { return c.op === 'in' ? `{stat: ${c.stat}, op: 'in', value: [${[...c.cats].join(', ')}]}` : c.op === 'between' ? `{stat: ${c.stat}, op: 'between', value: [${c.v1}, ${c.v2}]}` : `{stat: ${c.stat}, op: '${c.op}', value: ${c.v1}}`; }
+function ewma(pts, hl) { const a = 1 - Math.exp(Math.log(0.5) / Math.max(1, hl)); let m = null; return pts.map(p => { if (p.y === null) return {xi: p.xi, y: m}; m = m === null ? p.y : a * p.y + (1 - a) * m; return {xi: p.xi, y: m}; }); }
+function summ(vals, h) { const v = vals.filter(x => x !== null && !Number.isNaN(x)); if (v.length < 2) return {mean: v[0] ?? null, se: null, n: v.length}; const mu = sum(v) / v.length, sd = Math.sqrt(sum(v.map(x => (x - mu) ** 2)) / (v.length - 1)); return {mean: mu, se: sd / Math.sqrt(v.length) * Math.sqrt(Math.max(1, h)), n: v.length}; }  /* s.e. × √h: consecutive h-day earns overlap */
+function rows(E, h) { const out = []; for (let i = 0; i < E.di.length; i++) if (h === 'exp' ? E.exp[i] : (E.h[i] === h && !E.exp[i])) out.push(i); return out; }
+function split(E, idx, mask) { const on = [], off = []; for (const i of idx) (mask[E.di[i]] ? on : off).push(i); return {on, off}; }
+function runsOf(E, idx, mask) { let r = 0, prev = false; for (const i of idx) { const m = mask[E.di[i]]; if (m && !prev) r++; prev = m; } return r; }
+function lcg(seed) { let s = seed >>> 0; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296; }
+function shiftMask(mask, k) { const n = mask.length, out = new Array(n); for (let i = 0; i < n; i++) out[i] = mask[(i - k + n) % n]; return out; }
+
+function tabExplore() {
+  const p = U.pair, X = (D.tables[p] || {}).explore;
+  if (!X || !Object.keys(X.entries).length) return `<div class="ctl">${pairSel()}</div><div class="empty">No entries table for this pair: rerun inspect with --td (needs the trade table).</div>`;
+  const ex = U.ex, keys = Object.keys(X.entries).sort((a, b) => { const [aa, at] = a.split('|'), [ba, bt] = b.split('|'); if (aa !== ba) return aa === 'straddle_atm' ? -1 : ba === 'straddle_atm' ? 1 : aa.localeCompare(ba); return +at - +bt; });
+  if (!ex.key || !X.entries[ex.key]) ex.key = keys[0];
+  const E0 = X.entries[ex.key], hs = [...new Set(E0.h.filter((_, i) => !E0.exp[i]))].sort((a, b) => a - b); if (ex.h !== 'exp' && !hs.includes(ex.h)) ex.h = hs.includes(5) ? 5 : hs[0];
+  const S = D.series[p], nAll = S.dates.length, w0 = Math.max(0, Math.min(...E0.di) - 5), n = nAll - w0, rg = {i0: w0, i1: nAll - 1};   // the window with trades; everything below is relative to it
+  const E = {di: E0.di.map(d => d - w0), h: E0.h, exp: E0.exp, earn: E0.earn, comps: E0.comps};
+  if (!ex.c1 || !X.stats.data[ex.c1.stat]) ex.c1 = defaultClause(X, X.stats.cols.includes('atm_1m_z252') ? 'atm_1m_z252' : X.stats.cols[0]);
+  if (ex.and2 && (!ex.c2 || !X.stats.data[ex.c2.stat])) ex.c2 = defaultClause(X, X.stats.cols.includes('regime') ? 'regime' : X.stats.cols[0]);
+  let mask = maskOf(X, ex.c1); if (ex.and2 && ex.c2) { const m2 = maskOf(X, ex.c2); mask = mask.map((v, i) => v && m2[i]); }
+  mask = mask.slice(w0);
+  const filterText = clauseText(ex.c1) + (ex.and2 && ex.c2 ? ' AND ' + clauseText(ex.c2) : '');
+  const unit = X.normalised_by === 'vega' ? 'per unit vega at inception' : X.normalised_by === 'notional' ? 'per unit notional' : 'per unit vega where available, else notional';
+
+  // controls
+  const groups = {}; for (const c of X.stats.cols) (groups[X.stats.groups[c] || 'other'] = groups[X.stats.groups[c] || 'other'] || []).push(c);
+  const statSel = (name, cur) => `<select data-ex="${name}">${Object.entries(groups).map(([g, cs]) => `<optgroup label="${esc(g)}">${cs.map(c => `<option value="${esc(c)}" ${c === cur ? 'selected' : ''}>${esc(c)}</option>`).join('')}</optgroup>`).join('')}</select>`;
+  const clauseCtl = (c, k) => { const cat = isCat(X, c.stat); const cats = cat ? [...new Set(X.stats.data[c.stat].filter(x => x !== null))].sort(cmp(c.stat === 'regime' ? 'regime' : 'x')) : [];
+    return `<div class="frow" style="gap:8px">${statSel(k + '.stat', c.stat)}${cat ? `<span>in</span>${cats.map(v => `<button class="chip ${c.cats.has(v) ? 'on' : ''} ${c.stat === 'regime' ? 'st' : ''}" data-exchip="${k}" data-v="${esc(v)}" ${c.stat === 'regime' && c.cats.has(v) ? `style="background:${COL[v] || '#999'}"` : ''}>${esc(v)}</button>`).join('')}`
+      : `<select data-ex="${k}.op">${[['>', 'above'], ['<', 'below'], ['between', 'between']].map(([v, l]) => `<option value="${v}" ${c.op === v ? 'selected' : ''}>${l}</option>`).join('')}</select><input type="number" step="any" data-ex="${k}.v1" value="${c.v1}" style="width:90px">${c.op === 'between' ? `<span>and</span><input type="number" step="any" data-ex="${k}.v2" value="${c.v2}" style="width:90px">` : ''}`}
+      <span class="dim">${esc(X.stats.defs[c.stat] || '')}</span></div>`; };
+  let h = `<div class="ctl">${pairSel()}<label>strategy · tenor ${sel('ex.key', keys.map(k => [k, k.replace('|', ' · ') + 'd']), ex.key)}</label><label>horizon ${sel('ex.h', hs.map(v => [v, 'h=' + v]).concat([['exp', 'to expiry']]), ex.h)}</label><label>EWMA half-life <input type="number" data-ex="hl" value="${ex.hl}" min="1" style="width:60px"> entries</label>${X.components.length ? tog('ex.comps', ex.comps, 'show components') : ''}<span class="dim">earn is ${unit}</span></div>`;
+  h += `<div class="ctl" style="align-items:flex-start;flex-direction:column;gap:6px;background:var(--bg);padding:8px 10px;border-radius:4px"><div class="frow" style="gap:8px"><span class="lbl">condition</span>${clauseCtl(ex.c1, 'c1')}</div>${ex.and2 && ex.c2 ? `<div class="frow" style="gap:8px"><span class="lbl">and</span>${clauseCtl(ex.c2, 'c2')}<span class="mini" data-exand="0">remove</span></div>` : `<span class="mini" data-exand="1">+ and a second condition</span>`}</div>`;
+
+  // panel A: the earn series
+  const idx = rows(E, ex.h), pts = idx.map(i => ({xi: E.di[i], y: E.earn[i], tip: `${S.dates[E.di[i] + w0]} · earn ${fmt(E.earn[i], 2)}${mask[E.di[i]] ? ' · on' : ''}`}));
+  const bands = []; let s0 = -1; for (let i = 0; i <= n; i++) { const m = i < n && mask[i]; if (m && s0 < 0) s0 = i; if (!m && s0 >= 0) { bands.push({i0: s0, i1: i - 1, colour: '#4F46E5', opacity: 0.1}); s0 = -1; } }
+  const series = [{label: 'earn of a fresh unit', colour: '#1a1d23', scatter: true, pts}, {label: `EWMA (${ex.hl})`, colour: '#1a1d23', width: 2.2, pts: ewma(pts, ex.hl)}];
+  if (ex.comps) X.components.forEach((c, k) => series.push({label: c.replace('earn_', '') + ' (EWMA)', colour: PAL[k % PAL.length], width: 1.6, pts: ewma(idx.map(i => ({xi: E.di[i], y: E.comps[c][i]})), ex.hl)}));
+  const onDays = mask.filter(Boolean).length;
+  h += `<div class="panel"><h3>${esc(ex.key.replace('|', ' · '))}d · cumulative earn at ${ex.h === 'exp' ? 'expiry' : 'h = ' + ex.h} of a unit entered each day · shaded = ${esc(filterText)} (${(100 * onDays / n).toFixed(0)}% of days)</h3>${svgLines(series, {n, W: 980, H: 300, nodots: true, zero: true, bands, xticks: xticks(p, rg)})}${legendHTML(series.map(s => ({label: s.label, colour: s.colour})))}</div>`;
+
+  // panel B: the statistic
+  const c1 = ex.c1, cat1 = isCat(X, c1.stat);
+  if (cat1) { const d = X.stats.data[c1.stat].slice(w0), cb = []; let st = null, b0 = 0; for (let i = 0; i <= n; i++) { const v = i < n ? d[i] : null; if (v !== st) { if (st !== null) cb.push({i0: b0, i1: i - 1, state: st, colour: c1.stat === 'regime' ? COL[st] : PAL[[...new Set(d)].indexOf(st) % PAL.length], opacity: c1.cats.has(st) ? 0.45 : 0.12}); st = v; b0 = i; } }
+    h += `<div class="panel"><h3>${esc(c1.stat)} (categorical): selected categories shaded darker</h3>${svgLines([], {n, W: 980, H: 90, bands: cb, xticks: xticks(p, rg)})}</div>`; }
+  else { const sp = X.stats.data[c1.stat].slice(w0).map((v, i) => ({xi: i, y: v, tip: `${S.dates[i + w0]} · ${c1.stat} ${fmt(v, 3)}`})); const hl = c1.op === 'between' ? [{y: c1.v1, label: `${c1.v1}`}, {y: c1.v2, label: `${c1.v2}`}] : [{y: c1.v1, label: `${c1.op} ${c1.v1}`}];
+    h += `<div class="panel"><h3>${esc(c1.stat)} — ${esc(X.stats.defs[c1.stat] || '')}</h3>${svgLines([{label: c1.stat, colour: '#4F46E5', width: 1.3, pts: sp}], {n, W: 980, H: 200, nodots: true, bands, hlines: hl, xticks: xticks(p, rg)})}</div>`; }
+  if (ex.and2 && ex.c2 && !isCat(X, ex.c2.stat)) { const c2 = ex.c2, sp = X.stats.data[c2.stat].slice(w0).map((v, i) => ({xi: i, y: v})); h += `<div class="panel"><h3>${esc(c2.stat)} — ${esc(X.stats.defs[c2.stat] || '')}</h3>${svgLines([{label: c2.stat, colour: '#E8743B', width: 1.3, pts: sp}], {n, W: 980, H: 160, nodots: true, bands, hlines: c2.op === 'between' ? [{y: c2.v1}, {y: c2.v2}] : [{y: c2.v1, label: `${c2.op} ${c2.v1}`}], xticks: xticks(p, rg)})}</div>`; }
+
+  // panel C: on vs off, with the honesty attached
+  const sp0 = split(E, idx, mask), hv = ex.h === 'exp' ? 21 : ex.h;
+  const on = summ(sp0.on.map(i => E.earn[i]), hv), off = summ(sp0.off.map(i => E.earn[i]), hv), runs = runsOf(E, idx, mask);
+  const diff = on.mean !== null && off.mean !== null ? on.mean - off.mean : null, dse = on.se && off.se ? Math.sqrt(on.se ** 2 + off.se ** 2) : null;
+  // random reference: circular shifts of the day mask keep its run structure and on-fraction
+  let ref = null;
+  if (diff !== null && onDays > 0 && onDays < n) { const rnd = lcg(12345), ds = []; for (let k = 0; k < 200; k++) { const sh = 63 + Math.floor(rnd() * (n - 126)); const m2 = shiftMask(mask, sh); const s2 = split(E, idx, m2); const a = summ(s2.on.map(i => E.earn[i]), hv), b = summ(s2.off.map(i => E.earn[i]), hv); if (a.mean !== null && b.mean !== null) ds.push(a.mean - b.mean); }
+    if (ds.length > 20) { ds.sort((a, b) => a - b); ref = {lo: ds[Math.floor(0.05 * ds.length)], hi: ds[Math.floor(0.95 * ds.length)], p: ds.filter(x => Math.abs(x) >= Math.abs(diff)).length / ds.length, n: ds.length}; } }
+  const fitEnd = Math.floor(0.7 * n), fitIdx = idx.filter(i => E.di[i] <= fitEnd), confIdx = idx.filter(i => E.di[i] > fitEnd);
+  const wind = (ix) => { const s = split(E, ix, mask), a = summ(s.on.map(i => E.earn[i]), hv), b = summ(s.off.map(i => E.earn[i]), hv); return {on: a, off: b, diff: a.mean !== null && b.mean !== null ? a.mean - b.mean : null}; };
+  const wf = wind(fitIdx), wc = wind(confIdx);
+  const verdict = diff === null ? '' : ref && ref.p <= 0.05 && wf.diff !== null && wc.diff !== null && Math.sign(wf.diff) === Math.sign(wc.diff) ? '<span class="pass">unusual for a filter of this shape, and same sign in both windows</span>' : ref && ref.p <= 0.05 ? '<span class="fail">unusual overall, but the two windows disagree</span>' : '<span class="dim">within what a random filter of this shape produces</span>';
+  h += `<h2>Entries when the condition held, against the rest</h2><div class="card" style="margin-bottom:12px"><dl>
+    <dt>on</dt><dd>${on.n} entries in ${runs} runs · mean earn ${fmt(on.mean)} ± ${fmt(2 * (on.se || 0))} (2 s.e., overlap-adjusted)</dd>
+    <dt>off</dt><dd>${off.n} entries · mean earn ${fmt(off.mean)} ± ${fmt(2 * (off.se || 0))}</dd>
+    <dt>difference</dt><dd><b>${fmt(diff)}</b> ± ${fmt(2 * (dse || 0))} · ${verdict}</dd>
+    <dt>random filters</dt><dd>${ref ? `${ref.n} circular shifts of the same mask give differences in [${fmt(ref.lo)}, ${fmt(ref.hi)}] (5–95%); |difference| this large or larger in ${(100 * ref.p).toFixed(0)}% of them` : 'not enough on-days to shuffle'}</dd>
+    <dt>first 70% / last 30%</dt><dd>difference ${fmt(wf.diff)} (on n ${wf.on.n}) · ${fmt(wc.diff)} (on n ${wc.on.n}) · the last 30% is the window you would not have looked at when choosing the condition</dd></dl></div>`;
+  // by horizon
+  const hcats = hs.map(String).concat(['exp']), mk = (lab, which, colour) => ({label: lab, colour, pts: hcats.map((hc, k) => { const hh = hc === 'exp' ? 'exp' : +hc; const s = split(E, rows(E, hh), mask); const r = summ(s[which].map(i => E.earn[i]), hh === 'exp' ? 21 : hh); return {xi: k, y: r.mean, lo: r.se ? r.mean - 2 * r.se : undefined, hi: r.se ? r.mean + 2 * r.se : undefined, tip: `${lab} h=${hc}: ${fmt(r.mean)} (n ${r.n})`}; })});
+  h += `<div class="grid"><div class="panel"><h3>Mean earn by horizon, on (blue) vs off (grey), ± 2 s.e.</h3>${svgLines([mk('on', 'on', '#4F46E5'), mk('off', 'off', '#9aa0a8')], {xcats: hcats, zero: true, xlabel: 'horizon', ylabel: 'mean earn'})}</div>`;
+  if (X.components.length) { const cr = X.components.map(c => { const a = summ(sp0.on.map(i => E.comps[c][i]), hv), b = summ(sp0.off.map(i => E.comps[c][i]), hv); return {component: c.replace('earn_', ''), on: a.mean, off: b.mean, diff: a.mean !== null && b.mean !== null ? a.mean - b.mean : null}; });
+    cr.push({component: 'total', on: on.mean, off: off.mean, diff}); let vmax = 0; for (const r of cr) if (r.diff !== null) vmax = Math.max(vmax, Math.abs(r.diff));
+    h += `<div class="panel"><h3>Drivers at ${ex.h === 'exp' ? 'expiry' : 'h = ' + ex.h}: mean earn by component</h3>${tableHTML('exdrv', cr, [{k: 'component'}, {k: 'on', num: true}, {k: 'off', num: true}, {k: 'diff', label: 'on − off', num: true, style: v => divCol(v, vmax)}])}<div class="note">Components sum to the total. The row that carries the difference is the driver of the condition's edge.</div></div>`; }
+  h += '</div>';
+  // across the values of a statistic: auto buckets
+  const bstat = ex.bstat && X.stats.data[ex.bstat] ? ex.bstat : ex.c1.stat, bd = X.stats.data[bstat].slice(w0), bcat = isCat(X, bstat);
+  let buckets;   // [{label, lo, hi, test(v)}]
+  if (bcat) { const cats = [...new Set(bd.filter(x => x !== null))].sort(cmp(bstat === 'regime' ? 'regime' : 'x')); buckets = cats.map(c => ({label: c, test: v => v === c, colour: bstat === 'regime' ? COL[c] : null})); }
+  else { const nb = ex.nb, edges = []; for (let k = 0; k <= nb; k++) edges.push(k === 0 ? -Infinity : k === nb ? Infinity : quantile(bd, k / nb));
+    buckets = edges.slice(0, -1).map((lo, k) => { const hi = edges[k + 1]; return {label: `${k === 0 ? '≤' : fmt(lo, 2) + ' – '}${k === nb - 1 ? '> ' + fmt(lo, 2) : fmt(hi, 2)}`.replace('≤> ', '> '), lo, hi, test: v => v > lo && v <= hi}; });
+    buckets[0].label = `≤ ${fmt(edges[1], 2)}`; if (nb > 1) buckets[nb - 1].label = `> ${fmt(edges[nb - 1], 2)}`; }
+  const brows = buckets.map((b, k) => { const bm = bd.map(v => v !== null && b.test(v)); const sp = split(E, idx, bm), r = summ(sp.on.map(i => E.earn[i]), hv);
+    const f = summ(sp.on.filter(i => E.di[i] <= fitEnd).map(i => E.earn[i]), hv), c = summ(sp.on.filter(i => E.di[i] > fitEnd).map(i => E.earn[i]), hv);
+    const row = {bucket: b.label, k, days: bm.filter(Boolean).length, entries: r.n, runs: runsOf(E, idx, bm), mean: r.mean, se2: r.se ? 2 * r.se : null, fit: f.mean, confirm: c.mean, lo: b.lo, hi: b.hi, cat: bcat ? b.label : null};
+    for (const cmp_ of X.components) row[cmp_] = summ(sp.on.map(i => E.comps[cmp_][i]), hv).mean; return row; });
+  window.__brows = brows;
+  const means = brows.map(r => r.mean).filter(v => v !== null), bmax = Math.max(...means.map(Math.abs), 1e-9);
+  let rho = null; if (!bcat && means.length > 2) { const ks = brows.filter(r => r.mean !== null).map(r => r.k); const rk = a => a.map((v, i) => a.filter(x => x < v).length); const ra = rk(ks), rb = rk(means); const ma = sum(ra) / ra.length, mb = sum(rb) / rb.length; rho = sum(ra.map((x, i) => (x - ma) * (rb[i] - mb))) / Math.sqrt(sum(ra.map(x => (x - ma) ** 2)) * sum(rb.map(x => (x - mb) ** 2))); }
+  h += `<h2>Across the values of a statistic</h2><div class="ctl"><label>statistic ${statSel('bstat', bstat)}</label>${bcat ? '' : `<label>buckets ${sel('ex.nb', [[3, '3 (terciles)'], [4, '4'], [5, '5 (quintiles)'], [10, '10 (deciles)']], ex.nb)}</label>`}<span class="dim">${esc(X.stats.defs[bstat] || '')}</span></div>`;
+  const bcols = [{k: 'bucket', f: (v, r) => `<span style="cursor:pointer;text-decoration:underline dotted" data-bk="${r.k}" title="use this bucket as the condition">${esc(v)}</span>`}, {k: 'days', num: true, d: 0}, {k: 'entries', num: true, d: 0}, {k: 'runs', num: true, d: 0},
+    {k: 'mean', label: `mean earn h=${ex.h}`, num: true, style: v => divCol(v, bmax)}, {k: 'se2', label: '± 2 s.e.', num: true}, {k: 'fit', label: 'first 70%', num: true}, {k: 'confirm', label: 'last 30%', num: true}]
+    .concat(X.components.map(c => ({k: c, label: c.replace('earn_', ''), num: true})));
+  h += `<div class="grid"><div class="panel"><h3>Mean earn by bucket of ${esc(bstat)}, ± 2 s.e.</h3>${svgLines([{label: 'mean earn', colour: '#4F46E5', pts: brows.map((r, k) => ({xi: k, y: r.mean, lo: r.se2 !== null ? r.mean - r.se2 : undefined, hi: r.se2 !== null ? r.mean + r.se2 : undefined, tip: `${r.bucket}: ${fmt(r.mean)} (n ${r.entries}, ${r.runs} runs)`}))}], {xcats: brows.map(r => r.bucket), zero: true, W: 560, H: 280, xlabel: bstat})}${rho !== null ? `<div class="note">Rank correlation of bucket order with mean earn: ${fmt(rho, 2)}. A monotone pattern across equal-count buckets is harder to get by chance than one good bucket.</div>` : ''}</div>
+    <div class="panel"><h3>The table</h3><div style="overflow:auto">${tableHTML('exb', brows, bcols)}</div><div class="note">Equal-count buckets over the days in the window. Click a bucket to make it the condition above. Compare first 70% with last 30% per bucket before believing a bucket; runs is the number of separate stretches the bucket was active.</div></div></div>`;
+
+  // save
+  h += `<h2>Save this condition</h2><div class="ctl"><input type="text" data-exname placeholder="name, e.g. hi_vol_z2" style="width:220px"><button class="chip on" data-exsave>save</button><span class="dim">a saved condition becomes a tag: paste the YAML under <code>filters:</code> in the config, rerun inspect, and it splits the ladder's cells, appears in the packets and is tested like any other tag.</span></div>`;
+  if (ex.saved.length) h += `<pre>filters:\n${ex.saved.map(f => `  ${f.name}:\n    stat: ${f.c1.stat}\n    op: '${f.c1.op}'\n    value: ${f.c1.op === 'in' ? '[' + [...f.c1.cats].join(', ') + ']' : f.c1.op === 'between' ? '[' + f.c1.v1 + ', ' + f.c1.v2 + ']' : f.c1.v1}${f.c2 ? `\n    and:\n      - ${clauseYaml(f.c2)}` : ''}`).join('\n')}</pre><div class="legend">${ex.saved.map((f, i) => `<span>${esc(f.name)}: ${esc(clauseText(f.c1))}${f.c2 ? ' AND ' + esc(clauseText(f.c2)) : ''} <span class="mini" data-exdel="${i}">remove</span></span>`).join('')}</div>`;
+  h += `<div class="note">Read in this order: is the difference outside the random-filter band; does it hold in the last 30%; which component carries it; how many runs (a condition that was on in two stretches is two observations, whatever n says). Nothing here is on the card until the saved tag passes the walk-forward.</div>`;
+  return h;
+}
+
 /* ---------- wiring ---------- */
 function setPath(path, v) { const ks = path.split('.'); let o = U; for (const k of ks.slice(0, -1)) o = o[k]; o[ks[ks.length - 1]] = v; }
 function render() {
   document.getElementById('nav').innerHTML = TABS.map(([k, l]) => `<button class="${U.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('');
   filterBar();
   const main = document.getElementById('main');
-  main.innerHTML = {overview: tabOverview, ladder: tabLadder, matrix: tabMatrix, oos: tabOOS, states: tabStates, finder: tabFinder, transitions: tabTransitions, shock: tabShock, leading: tabLeading, sweep: tabSweep}[U.tab]();
+  main.innerHTML = {explore: tabExplore, overview: tabOverview, ladder: tabLadder, matrix: tabMatrix, oos: tabOOS, states: tabStates, finder: tabFinder, transitions: tabTransitions, shock: tabShock, leading: tabLeading, sweep: tabSweep}[U.tab]();
 }
 document.getElementById('nav').onclick = e => { if (e.target.dataset.tab) { U.tab = e.target.dataset.tab; render(); } };
 document.getElementById('main').addEventListener('change', e => {
@@ -510,10 +626,28 @@ document.getElementById('main').addEventListener('change', e => {
     if (['wf.lines', 'wf.panels'].includes(t.dataset.s)) pin(['pair', 'archetype', 'tenor_days'], U.wf, D.walk_forward);
     render(); }
   else if (t.dataset.c) { setPath(t.dataset.c, t.checked); render(); }
+  else if (t.dataset.ex !== undefined) { const k = t.dataset.ex; const X = D.tables[U.pair].explore;
+    if (k === 'hl') U.ex.hl = Math.max(1, +t.value || 20);
+    else if (k === 'bstat') U.ex.bstat = t.value;
+    else if (k.endsWith('.stat')) { const c = k.split('.')[0]; U.ex[c] = defaultClause(X, t.value); }
+    else if (k.endsWith('.op')) { const c = k.split('.')[0]; U.ex[c].op = t.value; }
+    else if (k.endsWith('.v1')) { const c = k.split('.')[0]; U.ex[c].v1 = +t.value; }
+    else if (k.endsWith('.v2')) { const c = k.split('.')[0]; U.ex[c].v2 = +t.value; }
+    render(); }
   else if (t.dataset.feat) { if (t.checked) U.lead.feats.add(t.dataset.feat); else U.lead.feats.delete(t.dataset.feat); render(); }
 });
 document.getElementById('main').addEventListener('click', e => {
-  const th = e.target.closest('th[data-k]'); const td = e.target.closest('td[data-p]');
+  const th = e.target.closest('th[data-k]'); const td = e.target.closest('td[data-p]'); const t = e.target;
+  if (t.dataset.exchip) { const c = U.ex[t.dataset.exchip]; const v = t.dataset.v; if (c.cats.has(v)) c.cats.delete(v); else c.cats.add(v); render(); return; }
+  if (t.dataset.exand !== undefined) { U.ex.and2 = t.dataset.exand === '1'; if (!U.ex.and2) U.ex.c2 = null; render(); return; }
+  if (t.dataset.exsave !== undefined) { const nm = (document.querySelector('input[data-exname]').value || '').trim().replace(/[^A-Za-z0-9_]/g, '_'); if (nm) { U.ex.saved.push({name: nm, c1: Object.assign({}, U.ex.c1, {cats: new Set(U.ex.c1.cats)}), c2: U.ex.and2 && U.ex.c2 ? Object.assign({}, U.ex.c2, {cats: new Set(U.ex.c2.cats)}) : null}); render(); } return; }
+  if (t.dataset.exdel !== undefined) { U.ex.saved.splice(+t.dataset.exdel, 1); render(); return; }
+  if (t.dataset.bk !== undefined) { const X = D.tables[U.pair].explore, bstat = U.ex.bstat && X.stats.data[U.ex.bstat] ? U.ex.bstat : U.ex.c1.stat; const row = window.__brows && window.__brows[+t.dataset.bk]; if (!row) return;
+    if (row.cat !== null) U.ex.c1 = {stat: bstat, op: 'in', cats: new Set([row.cat]), v1: 0, v2: 0};
+    else if (!isFinite(row.lo)) U.ex.c1 = {stat: bstat, op: '<', v1: +row.hi.toFixed(4), v2: 0, cats: new Set()};
+    else if (!isFinite(row.hi)) U.ex.c1 = {stat: bstat, op: '>', v1: +row.lo.toFixed(4), v2: 0, cats: new Set()};
+    else U.ex.c1 = {stat: bstat, op: 'between', v1: +row.lo.toFixed(4), v2: +row.hi.toFixed(4), cats: new Set()};
+    render(); window.scrollTo(0, 0); return; }
   if (th) { const id = th.closest('table').dataset.t, s = U.sort[id]; U.sort[id] = s && s.k === th.dataset.k ? {k: s.k, d: !s.d} : {k: th.dataset.k, d: true}; render(); }
   else if (td) { U.f.pair = new Set([td.dataset.p]); U.f.archetype = new Set([td.dataset.a]); U.f.tenor_days = new Set([+td.dataset.t]); Object.assign(U.lad, {x: 'h', lines: 'regime', panels: 'none', metric: U.mat.metric, vsAll: U.mat.vsAll}); U.tab = 'ladder'; render(); window.scrollTo(0, 0); }
 });
