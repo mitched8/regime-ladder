@@ -82,7 +82,7 @@ const sum = a => a.reduce((x, y) => x + y, 0);
 
 const U = {
   tab: HAS_EXPLORE ? 'explore' : 'overview', pair: D.pairs[0], sort: {},
-  ex: {key: null, h: 5, hl: 20, comps: false, c1: null, c2: null, and2: false, saved: [], bstat: null, nb: 5},
+  ex: {key: null, h: 5, hl: 20, comps: false, c1: null, c2: null, and2: false, saved: [], bstat: null, nb: 5, from: null, to: null},
   f: {pair: new Set([D.pairs[0]]),
       archetype: new Set(HAS_LADDER ? uniq(D.ladder, 'archetype') : []),
       tenor_days: new Set(HAS_LADDER ? [uniq(D.ladder, 'tenor_days')[0]] : []),
@@ -522,12 +522,16 @@ function tabExplore() {
   const ex = U.ex, keys = Object.keys(X.entries).sort((a, b) => { const [aa, at] = a.split('|'), [ba, bt] = b.split('|'); if (aa !== ba) return aa === 'straddle_atm' ? -1 : ba === 'straddle_atm' ? 1 : aa.localeCompare(ba); return +at - +bt; });
   if (!ex.key || !X.entries[ex.key]) ex.key = keys[0];
   const E0 = X.entries[ex.key], hs = [...new Set(E0.h.filter((_, i) => !E0.exp[i]))].sort((a, b) => a - b); if (ex.h !== 'exp' && !hs.includes(ex.h)) ex.h = hs.includes(5) ? 5 : hs[0];
-  const S = D.series[p], nAll = S.dates.length, w0 = Math.max(0, Math.min(...E0.di) - 5), n = nAll - w0, rg = {i0: w0, i1: nAll - 1};   // the window with trades; everything below is relative to it
-  const E = {di: E0.di.map(d => d - w0), h: E0.h, exp: E0.exp, earn: E0.earn, comps: E0.comps};
+  const S = D.series[p], nAll = S.dates.length, tw0 = Math.max(0, Math.min(...E0.di) - 5);   // the window with trades
+  const pos = d => { if (!d) return -1; let k = S.dates.findIndex(x => x >= d); return k < 0 ? nAll - 1 : k; };
+  let w0 = ex.from ? Math.max(tw0, pos(ex.from)) : tw0, w1 = ex.to ? Math.min(nAll - 1, pos(ex.to)) : nAll - 1; if (w1 - w0 < 30) { w0 = tw0; w1 = nAll - 1; ex.from = ex.to = null; }
+  const n = w1 - w0 + 1, rg = {i0: w0, i1: w1};                                                  // the period in view; everything below is relative to it
+  const keep = E0.di.map(d => d >= w0 && d <= w1), E = {di: [], h: [], exp: [], earn: [], comps: Object.fromEntries(Object.keys(E0.comps).map(c => [c, []]))};
+  E0.di.forEach((d, i) => { if (keep[i]) { E.di.push(d - w0); E.h.push(E0.h[i]); E.exp.push(E0.exp[i]); E.earn.push(E0.earn[i]); for (const c in E0.comps) E.comps[c].push(E0.comps[c][i]); } });
   if (!ex.c1 || !X.stats.data[ex.c1.stat]) ex.c1 = defaultClause(X, X.stats.cols.includes('atm_1m_z252') ? 'atm_1m_z252' : X.stats.cols[0]);
   if (ex.and2 && (!ex.c2 || !X.stats.data[ex.c2.stat])) ex.c2 = defaultClause(X, X.stats.cols.includes('regime') ? 'regime' : X.stats.cols[0]);
   let mask = maskOf(X, ex.c1); if (ex.and2 && ex.c2) { const m2 = maskOf(X, ex.c2); mask = mask.map((v, i) => v && m2[i]); }
-  mask = mask.slice(w0);
+  mask = mask.slice(w0, w1 + 1);
   const filterText = clauseText(ex.c1) + (ex.and2 && ex.c2 ? ' AND ' + clauseText(ex.c2) : '');
   const unit = X.normalised_by === 'vega' ? 'per unit vega at inception' : X.normalised_by === 'notional' ? 'per unit notional' : 'per unit vega where available, else notional';
 
@@ -539,6 +543,8 @@ function tabExplore() {
       : `<select data-ex="${k}.op">${[['>', 'above'], ['<', 'below'], ['between', 'between']].map(([v, l]) => `<option value="${v}" ${c.op === v ? 'selected' : ''}>${l}</option>`).join('')}</select><input type="number" step="any" data-ex="${k}.v1" value="${c.v1}" style="width:90px">${c.op === 'between' ? `<span>and</span><input type="number" step="any" data-ex="${k}.v2" value="${c.v2}" style="width:90px">` : ''}`}
       <span class="dim">${esc(X.stats.defs[c.stat] || '')}</span></div>`; };
   let h = `<div class="ctl">${pairSel()}<label>strategy · tenor ${sel('ex.key', keys.map(k => [k, k.replace('|', ' · ') + 'd']), ex.key)}</label><label>horizon ${sel('ex.h', hs.map(v => [v, 'h=' + v]).concat([['exp', 'to expiry']]), ex.h)}</label><label>EWMA half-life <input type="number" data-ex="hl" value="${ex.hl}" min="1" style="width:60px"> entries</label>${X.components.length ? tog('ex.comps', ex.comps, 'show components') : ''}<span class="dim">earn is ${unit}</span></div>`;
+  const presets = [['all', 'whole history'], ['1', 'last 1y'], ['2', 'last 2y'], ['3', 'last 3y'], ['5', 'last 5y'], ['fit', 'first 70%'], ['confirm', 'last 30%']];
+  h += `<div class="ctl"><label>period <input type="date" data-ex="from" value="${ex.from || S.dates[tw0]}" min="${S.dates[tw0]}" max="${S.dates[nAll - 1]}"> to <input type="date" data-ex="to" value="${ex.to || S.dates[nAll - 1]}" min="${S.dates[tw0]}" max="${S.dates[nAll - 1]}"></label><label>preset ${sel('ex.preset', presets, 'all')}</label><span class="dim">${n} days in view, ${S.dates[w0]} → ${S.dates[w1]}; every table below is computed on this period</span></div>`;
   h += `<div class="ctl" style="align-items:flex-start;flex-direction:column;gap:6px;background:var(--bg);padding:8px 10px;border-radius:4px"><div class="frow" style="gap:8px"><span class="lbl">condition</span>${clauseCtl(ex.c1, 'c1')}</div>${ex.and2 && ex.c2 ? `<div class="frow" style="gap:8px"><span class="lbl">and</span>${clauseCtl(ex.c2, 'c2')}<span class="mini" data-exand="0">remove</span></div>` : `<span class="mini" data-exand="1">+ and a second condition</span>`}</div>`;
 
   // panel A: the earn series
@@ -582,26 +588,37 @@ function tabExplore() {
     cr.push({component: 'total', on: on.mean, off: off.mean, diff}); let vmax = 0; for (const r of cr) if (r.diff !== null) vmax = Math.max(vmax, Math.abs(r.diff));
     h += `<div class="panel"><h3>Drivers at ${ex.h === 'exp' ? 'expiry' : 'h = ' + ex.h}: mean earn by component</h3>${tableHTML('exdrv', cr, [{k: 'component'}, {k: 'on', num: true}, {k: 'off', num: true}, {k: 'diff', label: 'on − off', num: true, style: v => divCol(v, vmax)}])}<div class="note">Components sum to the total. The row that carries the difference is the driver of the condition's edge.</div></div>`; }
   h += '</div>';
-  // across the values of a statistic: auto buckets
-  const bstat = ex.bstat && X.stats.data[ex.bstat] ? ex.bstat : ex.c1.stat, bd = X.stats.data[bstat].slice(w0), bcat = isCat(X, bstat);
+  // across the values of a statistic: auto buckets × drivers, stacked tables
+  const bstat = ex.bstat && X.stats.data[ex.bstat] ? ex.bstat : ex.c1.stat, bd = X.stats.data[bstat].slice(w0, w1 + 1), bcat = isCat(X, bstat);
   let buckets;   // [{label, lo, hi, test(v)}]
-  if (bcat) { const cats = [...new Set(bd.filter(x => x !== null))].sort(cmp(bstat === 'regime' ? 'regime' : 'x')); buckets = cats.map(c => ({label: c, test: v => v === c, colour: bstat === 'regime' ? COL[c] : null})); }
+  if (bcat) { const cats = [...new Set(bd.filter(x => x !== null))].sort(cmp(bstat === 'regime' ? 'regime' : 'x')); buckets = cats.map(c => ({label: c, test: v => v === c, cat: c})); }
   else { const nb = ex.nb, edges = []; for (let k = 0; k <= nb; k++) edges.push(k === 0 ? -Infinity : k === nb ? Infinity : quantile(bd, k / nb));
-    buckets = edges.slice(0, -1).map((lo, k) => { const hi = edges[k + 1]; return {label: `${k === 0 ? '≤' : fmt(lo, 2) + ' – '}${k === nb - 1 ? '> ' + fmt(lo, 2) : fmt(hi, 2)}`.replace('≤> ', '> '), lo, hi, test: v => v > lo && v <= hi}; });
-    buckets[0].label = `≤ ${fmt(edges[1], 2)}`; if (nb > 1) buckets[nb - 1].label = `> ${fmt(edges[nb - 1], 2)}`; }
-  const brows = buckets.map((b, k) => { const bm = bd.map(v => v !== null && b.test(v)); const sp = split(E, idx, bm), r = summ(sp.on.map(i => E.earn[i]), hv);
-    const f = summ(sp.on.filter(i => E.di[i] <= fitEnd).map(i => E.earn[i]), hv), c = summ(sp.on.filter(i => E.di[i] > fitEnd).map(i => E.earn[i]), hv);
-    const row = {bucket: b.label, k, days: bm.filter(Boolean).length, entries: r.n, runs: runsOf(E, idx, bm), mean: r.mean, se2: r.se ? 2 * r.se : null, fit: f.mean, confirm: c.mean, lo: b.lo, hi: b.hi, cat: bcat ? b.label : null};
-    for (const cmp_ of X.components) row[cmp_] = summ(sp.on.map(i => E.comps[cmp_][i]), hv).mean; return row; });
+    buckets = edges.slice(0, -1).map((lo, k) => ({label: k === 0 ? `≤ ${fmt(edges[1], 2)}` : k === nb - 1 ? `> ${fmt(lo, 2)}` : `${fmt(lo, 2)} – ${fmt(edges[k + 1], 2)}`, lo, hi: edges[k + 1], test: v => v > lo && v <= edges[k + 1], cat: null})); }
+  const drivers = [['earn', 'total']].concat(X.components.map(c => [c, c.replace('earn_', '')]));
+  const series_of = (i, d) => d === 'earn' ? E.earn[i] : E.comps[d][i];
+  const dist = (vals) => { const v = vals.filter(x => x !== null && !Number.isNaN(x)).sort((a, b) => a - b); if (!v.length) return {n: 0}; const mu = sum(v) / v.length, sd = v.length > 1 ? Math.sqrt(sum(v.map(x => (x - mu) ** 2)) / (v.length - 1)) : null;
+    const q = f => v[Math.min(v.length - 1, Math.floor(f * (v.length - 1)))]; return {n: v.length, mean: mu, sd, se: sd !== null ? sd / Math.sqrt(v.length) * Math.sqrt(hv) : null, ratio: sd ? mu / sd : null, hit: v.filter(x => x > 0).length / v.length, p5: q(0.05), p50: q(0.5), p95: q(0.95), min: v[0], max: v[v.length - 1], total: sum(v)}; };
+  const brows = buckets.map((b, k) => { const bm = bd.map(v => v !== null && b.test(v)); const sp = split(E, idx, bm); const row = {bucket: b.label, k, days: bm.filter(Boolean).length, entries: sp.on.length, runs: runsOf(E, idx, bm), lo: b.lo, hi: b.hi, cat: b.cat, d: {}};
+    for (const [d] of drivers) { row.d[d] = dist(sp.on.map(i => series_of(i, d))); row.d[d].fit = dist(sp.on.filter(i => E.di[i] <= fitEnd).map(i => series_of(i, d))).mean; row.d[d].confirm = dist(sp.on.filter(i => E.di[i] > fitEnd).map(i => series_of(i, d))).mean; }
+    return row; });
   window.__brows = brows;
-  const means = brows.map(r => r.mean).filter(v => v !== null), bmax = Math.max(...means.map(Math.abs), 1e-9);
-  let rho = null; if (!bcat && means.length > 2) { const ks = brows.filter(r => r.mean !== null).map(r => r.k); const rk = a => a.map((v, i) => a.filter(x => x < v).length); const ra = rk(ks), rb = rk(means); const ma = sum(ra) / ra.length, mb = sum(rb) / rb.length; rho = sum(ra.map((x, i) => (x - ma) * (rb[i] - mb))) / Math.sqrt(sum(ra.map(x => (x - ma) ** 2)) * sum(rb.map(x => (x - mb) ** 2))); }
-  h += `<h2>Across the values of a statistic</h2><div class="ctl"><label>statistic ${statSel('bstat', bstat)}</label>${bcat ? '' : `<label>buckets ${sel('ex.nb', [[3, '3 (terciles)'], [4, '4'], [5, '5 (quintiles)'], [10, '10 (deciles)']], ex.nb)}</label>`}<span class="dim">${esc(X.stats.defs[bstat] || '')}</span></div>`;
-  const bcols = [{k: 'bucket', f: (v, r) => `<span style="cursor:pointer;text-decoration:underline dotted" data-bk="${r.k}" title="use this bucket as the condition">${esc(v)}</span>`}, {k: 'days', num: true, d: 0}, {k: 'entries', num: true, d: 0}, {k: 'runs', num: true, d: 0},
-    {k: 'mean', label: `mean earn h=${ex.h}`, num: true, style: v => divCol(v, bmax)}, {k: 'se2', label: '± 2 s.e.', num: true}, {k: 'fit', label: 'first 70%', num: true}, {k: 'confirm', label: 'last 30%', num: true}]
-    .concat(X.components.map(c => ({k: c, label: c.replace('earn_', ''), num: true})));
-  h += `<div class="grid"><div class="panel"><h3>Mean earn by bucket of ${esc(bstat)}, ± 2 s.e.</h3>${svgLines([{label: 'mean earn', colour: '#4F46E5', pts: brows.map((r, k) => ({xi: k, y: r.mean, lo: r.se2 !== null ? r.mean - r.se2 : undefined, hi: r.se2 !== null ? r.mean + r.se2 : undefined, tip: `${r.bucket}: ${fmt(r.mean)} (n ${r.entries}, ${r.runs} runs)`}))}], {xcats: brows.map(r => r.bucket), zero: true, W: 560, H: 280, xlabel: bstat})}${rho !== null ? `<div class="note">Rank correlation of bucket order with mean earn: ${fmt(rho, 2)}. A monotone pattern across equal-count buckets is harder to get by chance than one good bucket.</div>` : ''}</div>
-    <div class="panel"><h3>The table</h3><div style="overflow:auto">${tableHTML('exb', brows, bcols)}</div><div class="note">Equal-count buckets over the days in the window. Click a bucket to make it the condition above. Compare first 70% with last 30% per bucket before believing a bucket; runs is the number of separate stretches the bucket was active.</div></div></div>`;
+  const allRow = (() => { const row = {bucket: 'all entries', k: -1, days: n, entries: idx.length, runs: 1, d: {}}; for (const [d] of drivers) { row.d[d] = dist(idx.map(i => series_of(i, d))); row.d[d].fit = dist(idx.filter(i => E.di[i] <= fitEnd).map(i => series_of(i, d))).mean; row.d[d].confirm = dist(idx.filter(i => E.di[i] > fitEnd).map(i => series_of(i, d))).mean; } return row; })();
+  const means = brows.map(r => r.d.earn.mean).filter(v => v !== undefined && v !== null);
+  let rho = null; if (!bcat && means.length > 2) { const ks = brows.filter(r => r.d.earn.mean !== undefined).map(r => r.k); const rk = a => a.map(v => a.filter(x => x < v).length); const ra = rk(ks), rb = rk(means); const ma = sum(ra) / ra.length, mb = sum(rb) / rb.length; const den = Math.sqrt(sum(ra.map(x => (x - ma) ** 2)) * sum(rb.map(x => (x - mb) ** 2))); rho = den ? sum(ra.map((x, i) => (x - ma) * (rb[i] - mb))) / den : null; }
+  h += `<h2>Across the values of a statistic: buckets × drivers</h2><div class="ctl"><label>statistic ${statSel('bstat', bstat)}</label>${bcat ? '' : `<label>buckets ${sel('ex.nb', [[3, '3 (terciles)'], [4, '4'], [5, '5 (quintiles)'], [10, '10 (deciles)']], ex.nb)}</label>`}<span class="dim">${esc(X.stats.defs[bstat] || '')} · earn at ${ex.h === 'exp' ? 'expiry' : 'h = ' + ex.h}, ${esc(unit)}, ${S.dates[w0]} → ${S.dates[w1]}</span></div>`;
+  h += `<div class="grid one"><div class="panel"><h3>Mean earn by bucket of ${esc(bstat)}, total ± 2 s.e., with the drivers</h3>${svgLines([{label: 'total', colour: '#1a1d23', width: 2.2, pts: brows.map((r, k) => ({xi: k, y: r.d.earn.mean === undefined ? null : r.d.earn.mean, lo: r.d.earn.se != null ? r.d.earn.mean - 2 * r.d.earn.se : undefined, hi: r.d.earn.se != null ? r.d.earn.mean + 2 * r.d.earn.se : undefined, tip: `${r.bucket}: ${fmt(r.d.earn.mean)} (n ${r.entries}, ${r.runs} runs)`}))}].concat(X.components.map((c, j) => ({label: c.replace('earn_', ''), colour: PAL[j % PAL.length], dash: '5 3', pts: brows.map((r, k) => ({xi: k, y: r.d[c].mean === undefined ? null : r.d[c].mean, tip: `${r.bucket} · ${c.replace('earn_', '')}: ${fmt(r.d[c].mean)}`}))}))), {xcats: brows.map(r => r.bucket), zero: true, W: 820, H: 300, xlabel: bstat})}${legendHTML([{label: 'total', colour: '#1a1d23'}].concat(X.components.map((c, j) => ({label: c.replace('earn_', ''), colour: PAL[j % PAL.length], dash: '5 3'}))))}${rho !== null ? `<div class="note">Rank correlation of bucket order with mean total earn: ${fmt(rho, 2)}. A monotone pattern across equal-count buckets is harder to get by chance than one good bucket.</div>` : ''}</div></div>`;
+  // the stacked tables: one per statistic, rows = buckets (+ all), columns = drivers
+  const bt = (title, key, opts = {}) => { const rowsAll = brows.concat([allRow]); let vmax = 0; if (opts.colour) for (const r of brows) for (const [d] of drivers) { const v = r.d[d][key]; if (v !== undefined && v !== null && isFinite(v)) vmax = Math.max(vmax, Math.abs(opts.centre !== undefined ? v - opts.centre : v)); }
+    let t = `<table class="hm" style="min-width:100%"><thead><tr><th>${esc(title)}</th><th class="num">entries</th><th class="num">runs</th>${drivers.map(([, l]) => `<th class="num">${esc(l)}</th>`).join('')}</tr></thead><tbody>`;
+    for (const r of rowsAll) { t += `<tr${r.k < 0 ? ' class="dimr"' : ''}><td class="rowh">${r.k >= 0 ? `<span style="cursor:pointer;text-decoration:underline dotted" data-bk="${r.k}" title="use this bucket as the condition">${esc(r.bucket)}</span>` : esc(r.bucket)}</td><td style="cursor:default">${r.entries}</td><td style="cursor:default">${r.runs}</td>`;
+      for (const [d] of drivers) { const v = r.d[d][key]; const shown = v === undefined || v === null || !isFinite(v) ? '·' : opts.pct ? (100 * v).toFixed(0) + '%' : fmt(v, opts.d === undefined ? 2 : opts.d); const st = opts.colour && r.k >= 0 && v !== undefined && v !== null && isFinite(v) ? divCol(opts.centre !== undefined ? v - opts.centre : v, vmax) : ''; t += `<td style="${st};cursor:default" title="${esc(opts.tip ? opts.tip(r.d[d]) : '')}">${shown}</td>`; } t += '</tr>'; }
+    return t + '</tbody></table>'; };
+  h += `<div class="panel"><h3>1 · Raw performance: mean earn per entry, bucket × driver</h3>${bt('mean earn', 'mean', {colour: true, tip: s => s.se != null ? `± ${fmt(2 * s.se)} (2 s.e.)` : ''})}<div class="note">Hover a cell for ± 2 s.e. Components sum to the total within a row. Click a bucket label to make it the condition above.</div></div>`;
+  h += `<div class="panel"><h3>2 · Total earn over the period (sum across entries), bucket × driver</h3>${bt('sum of earn', 'total', {colour: true, d: 0})}<div class="note">Mean × entries: how much of the period's earn each bucket of the statistic accounted for, and which driver delivered it.</div></div>`;
+  h += `<div class="panel"><h3>3 · Dispersion: standard deviation of earn per entry, bucket × driver</h3>${bt('std dev', 'sd', {})}</div>`;
+  h += `<div class="panel"><h3>4 · Quality: mean / standard deviation per entry, bucket × driver</h3>${bt('mean / sd', 'ratio', {colour: true, d: 2})}<div class="note">Per-entry ratio at this horizon, not annualised; compare across buckets and drivers, not with a Sharpe ratio from elsewhere.</div></div>`;
+  h += `<div class="panel"><h3>5 · Hit rate: share of entries with positive earn, bucket × driver</h3>${bt('hit rate', 'hit', {pct: true, colour: true, centre: 0.5})}</div>`;
+  h += `<div class="panel"><h3>6 · Tails of the total: 5th / median / 95th percentile, worst and best entry</h3><table class="hm"><thead><tr><th>bucket</th><th class="num">entries</th><th class="num">p5</th><th class="num">median</th><th class="num">p95</th><th class="num">worst</th><th class="num">best</th><th class="num">first 70%</th><th class="num">last 30%</th></tr></thead><tbody>${brows.concat([allRow]).map(r => { const s = r.d.earn; return `<tr${r.k < 0 ? ' class="dimr"' : ''}><td class="rowh">${esc(r.bucket)}</td>${[r.entries, s.p5, s.p50, s.p95, s.min, s.max, s.fit, s.confirm].map((v, j) => `<td style="cursor:default">${j === 0 ? v : fmt(v)}</td>`).join('')}</tr>`; }).join('')}</tbody></table><div class="note">First 70% / last 30% of the period in view: a bucket whose mean changes sign between them is not a stable condition.</div></div>`;
 
   // save
   h += `<h2>Save this condition</h2><div class="ctl"><input type="text" data-exname placeholder="name, e.g. hi_vol_z2" style="width:220px"><button class="chip on" data-exsave>save</button><span class="dim">a saved condition becomes a tag: paste the YAML under <code>filters:</code> in the config, rerun inspect, and it splits the ladder's cells, appears in the packets and is tested like any other tag.</span></div>`;
@@ -624,6 +641,9 @@ function renderInner() {
 document.getElementById('nav').onclick = e => { if (e.target.dataset.tab) { U.tab = e.target.dataset.tab; render(); } };
 document.getElementById('main').addEventListener('change', e => {
   const t = e.target;
+  if (t.dataset.s === 'ex.preset') { const S = D.series[U.pair], nAll = S.dates.length, v = t.value; const X = D.tables[U.pair].explore; const tw0 = Math.max(0, Math.min(...Object.values(X.entries).map(E => Math.min(...E.di))) - 5);
+    if (v === 'all') { U.ex.from = U.ex.to = null; } else if (v === 'fit') { U.ex.from = null; U.ex.to = S.dates[tw0 + Math.floor(0.7 * (nAll - tw0))]; } else if (v === 'confirm') { U.ex.from = S.dates[tw0 + Math.floor(0.7 * (nAll - tw0)) + 1]; U.ex.to = null; } else { U.ex.from = S.dates[Math.max(tw0, nAll - Math.round(252 * +v))]; U.ex.to = null; }
+    render(); return; }
   if (t.dataset.s) { let v = t.value; if (/^-?\d+(\.\d+)?$/.test(v) && !['pair'].includes(t.dataset.s)) v = +v; if (t.dataset.s === 'pair') U.pair = v; else setPath(t.dataset.s, v);
     if (['lad.x', 'lad.lines', 'lad.panels'].includes(t.dataset.s)) pin(['pair', 'archetype', 'tenor_days', 'regime'], U.lad, D.ladder);
     if (['wf.lines', 'wf.panels'].includes(t.dataset.s)) pin(['pair', 'archetype', 'tenor_days'], U.wf, D.walk_forward);
@@ -632,6 +652,8 @@ document.getElementById('main').addEventListener('change', e => {
   else if (t.dataset.ex !== undefined) { const k = t.dataset.ex; const X = D.tables[U.pair].explore;
     if (k === 'hl') U.ex.hl = Math.max(1, +t.value || 20);
     else if (k === 'bstat') U.ex.bstat = t.value;
+    else if (k === 'from') U.ex.from = t.value || null;
+    else if (k === 'to') U.ex.to = t.value || null;
     else if (k.endsWith('.stat')) { const c = k.split('.')[0]; U.ex[c] = defaultClause(X, t.value); }
     else if (k.endsWith('.op')) { const c = k.split('.')[0]; U.ex[c].op = t.value; }
     else if (k.endsWith('.v1')) { const c = k.split('.')[0]; U.ex[c].v1 = +t.value; }

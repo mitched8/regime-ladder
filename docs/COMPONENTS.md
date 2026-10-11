@@ -135,11 +135,16 @@ reference band from 200 circular shifts of the condition's own mask (same on-fra
 so "unusual" means unusual for a condition of that shape and not merely non-zero. Drivers are the
 components, on against off.
 
+A **period** (dates, or a preset: last 1–5 years, first 70%, last 30%) narrows everything on the tab to the
+entries made in it, so a condition can be read on one stretch of history at a time.
+
 Below the condition, **across the values of a statistic** cuts the same earn into equal-count buckets of any
-statistic (terciles to deciles; the categories, for a categorical one): mean earn with its interval per bucket,
-first 70% against last 30%, runs, the components, and the rank correlation of bucket order with earn. A
-monotone pattern across buckets is harder to get by chance than one good bucket. Clicking a bucket makes it
-the condition.
+statistic (terciles to deciles; the categories, for a categorical one) and shows bucket × driver tables
+stacked in a fixed order: mean earn per entry; total earn over the period; standard deviation; mean over
+standard deviation; hit rate; then the tails of the total (5th, median, 95th percentile, worst, best) with
+first 70% against last 30%. Each row also carries entries and runs; the chart above the tables draws the
+total with its interval and each driver. A monotone pattern across buckets is harder to get by chance than
+one good bucket. Clicking a bucket makes it the condition.
 
 **Adding a statistic** takes one of three steps, in order of effort: a raw market column goes under
 `explore: passthrough:` in the config with a one-line definition; a function of the market frame goes in
