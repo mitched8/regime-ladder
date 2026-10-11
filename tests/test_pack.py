@@ -34,7 +34,7 @@ def test_stage_packets_have_their_sections(dumped, tmp_path, stage, sections):
 def test_data_packet_from_the_trade_table(dumped, tmp_path):
     _, m, td = dumped
     text = pack.build("data", tmp_path, td=td, market=m, archetypes_cfg=yaml.safe_load(open("configs/archetypes.yaml"))).read_text()
-    for s in ("[PASS] components_sum_to_pnl", "## 2. Coverage", "## 5. Twenty largest market days", "## 7. Vega at age 1"):
+    for s in ("[PASS] components_sum_to_pnl_legs", "## 2. Coverage", "## 5. Twenty largest market days", "## 7. Vega at age 1"):
         assert s in text, s
 
 

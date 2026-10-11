@@ -23,12 +23,12 @@ GROUP = ["pair", "archetype", "tenor_days"]
 
 
 # ----------------------------------------------------------------------------- per-entry earn
-def entries(td: pd.DataFrame, horizons=HORIZONS, normalise: str = "vega", include_expiry: bool = True) -> pd.DataFrame:
+def entries(td: pd.DataFrame, horizons=HORIZONS, normalise: str = "vega", include_expiry: bool = True, components: dict | None = None) -> pd.DataFrame:
     """One row per (pair, archetype, tenor, entry date, horizon): cumulative P&L of a fresh unit, total and by
     component, divided by the unit's |vega| at age 1 (`normalise="vega"`, falling back to notional where vega is
     missing or zero) or left in cash per unit notional (`"notional"`). Several trades entered the same day are averaged."""
     td = td.sort_values(["trade_id", "age"])
-    comps = [c for c in schema.COMPONENTS if c in td.columns]
+    comps = schema.component_columns(td)
     cols = ["pnl"] + comps
     cum = td.groupby(GROUP + ["trade_id"])[cols].cumsum().add_prefix("cum_")      # a trade id is unique within its group; never trust it across groups
     t = pd.concat([td[GROUP + ["trade_id", "entry_date", "age"]], cum], axis=1)
@@ -54,6 +54,7 @@ def entries(td: pd.DataFrame, horizons=HORIZONS, normalise: str = "vega", includ
              .reset_index())
     out.attrs["normalised_by"] = "vega" if (t["normalised_by"] == "vega").all() else ("notional" if (t["normalised_by"] == "notional").all() else "mixed")
     out.attrs["components"] = [c.replace("pnl", "earn") for c in comps]
+    out.attrs["component_sets"] = {k: [c.replace("pnl", "earn") for c in v] for k, v in schema.component_sets(td, components).items()}   # `components`: extra sets named in the config
     return out
 
 

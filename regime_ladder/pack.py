@@ -151,10 +151,12 @@ def stage_data(td: pd.DataFrame, market: pd.DataFrame | None, archetypes_cfg: di
     big = day.reindex(day["mean_pnl"].abs().sort_values(ascending=False).index).head(20)
     big = big.assign(date=big["date"].dt.date)
     out += ["## 5. Twenty largest market days: mean daily P&L across live trades of a leg (check the dates against known stress)", _md(big)]
-    if all(c in td for c in schema.COMPONENTS):
-        comp = td.groupby("archetype").apply(lambda x: pd.Series({c: x[c].var() / x["pnl"].var() for c in schema.COMPONENTS}
-                                                               | {"max_abs_residual": (x["pnl"] - x[schema.COMPONENTS].sum(axis=1)).abs().max()})).reset_index()
-        out += ["## 6. Components: variance of each component / variance of total (can exceed 1 when components offset) and largest residual", _md(comp, digits=4)]
+    csets = schema.component_sets(td)
+    if csets:
+        for name, cols in csets.items():
+            comp = td.groupby("archetype").apply(lambda x: pd.Series({c: x[c].var() / x["pnl"].var() for c in cols}
+                                                                   | {"max_abs_residual": (x["pnl"] - x[cols].sum(axis=1)).abs().max()})).reset_index()
+            out += [f"## 6. Components ({name}): variance of each component / variance of total (can exceed 1 when components offset) and largest residual", _md(comp, digits=4)]
     else:
         out += ["## 6. Components", "not present in the trade table\n"]
     if "vega" in td:

@@ -27,7 +27,7 @@ def test_missing_day_is_caught(trade_days):
 def test_component_mismatch_is_caught(trade_days):
     td = trade_days.copy()
     td.loc[td.index[3], "pnl_trade"] += 0.01
-    assert not checks.check_trade_days(td)["components_sum_to_pnl"][0]
+    assert not checks.check_trade_days(td)["components_sum_to_pnl_legs"][0]
 
 
 def test_date_before_entry_is_caught(trade_days):

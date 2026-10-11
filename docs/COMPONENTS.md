@@ -132,8 +132,9 @@ above 2". The named states, the tags and the finder are all instances of that op
 Every condition carries its own honesty: n and the number of runs it was on; on-minus-off with an
 overlap-adjusted interval; the same difference on the first 70% and the last 30% of the history; and a
 reference band from 200 circular shifts of the condition's own mask (same on-fraction, same run lengths),
-so "unusual" means unusual for a condition of that shape and not merely non-zero. Drivers are the
-components, on against off.
+so "unusual" means unusual for a condition of that shape and not merely non-zero. Drivers are the attribution columns of the trade table (`pnl_<name>`, see `docs/LOCALISATION.md`): the
+risk-factor set (spot, vol, rr, fly, rates, theta, residual) when the source provides it, the legs set
+(trade, delta hedge, vega hedge) otherwise, switchable when both are present.
 
 A **period** (dates, or a preset: last 1–5 years, first 70%, last 30%) narrows everything on the tab to the
 entries made in it, so a condition can be read on one stretch of history at a time.

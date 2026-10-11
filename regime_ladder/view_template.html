@@ -82,7 +82,7 @@ const sum = a => a.reduce((x, y) => x + y, 0);
 
 const U = {
   tab: HAS_EXPLORE ? 'explore' : 'overview', pair: D.pairs[0], sort: {},
-  ex: {key: null, h: 5, hl: 20, comps: false, c1: null, c2: null, and2: false, saved: [], bstat: null, nb: 5, from: null, to: null},
+  ex: {key: null, h: 5, hl: 20, comps: false, c1: null, c2: null, and2: false, saved: [], bstat: null, nb: 5, from: null, to: null, cset: null},
   f: {pair: new Set([D.pairs[0]]),
       archetype: new Set(HAS_LADDER ? uniq(D.ladder, 'archetype') : []),
       tenor_days: new Set(HAS_LADDER ? [uniq(D.ladder, 'tenor_days')[0]] : []),
@@ -517,7 +517,7 @@ function lcg(seed) { let s = seed >>> 0; return () => (s = (s * 1664525 + 101390
 function shiftMask(mask, k) { const n = mask.length, out = new Array(n); for (let i = 0; i < n; i++) out[i] = mask[(i - k + n) % n]; return out; }
 
 function tabExplore() {
-  const p = U.pair, X = (D.tables[p] || {}).explore;
+  const p = U.pair; let X = (D.tables[p] || {}).explore;
   if (!X || !Object.keys(X.entries).length) return `<div class="ctl">${pairSel()}</div><div class="empty">No entries table for this pair: rerun inspect with --td (needs the trade table).</div>`;
   const ex = U.ex, keys = Object.keys(X.entries).sort((a, b) => { const [aa, at] = a.split('|'), [ba, bt] = b.split('|'); if (aa !== ba) return aa === 'straddle_atm' ? -1 : ba === 'straddle_atm' ? 1 : aa.localeCompare(ba); return +at - +bt; });
   if (!ex.key || !X.entries[ex.key]) ex.key = keys[0];
@@ -528,6 +528,10 @@ function tabExplore() {
   const n = w1 - w0 + 1, rg = {i0: w0, i1: w1};                                                  // the period in view; everything below is relative to it
   const keep = E0.di.map(d => d >= w0 && d <= w1), E = {di: [], h: [], exp: [], earn: [], comps: Object.fromEntries(Object.keys(E0.comps).map(c => [c, []]))};
   E0.di.forEach((d, i) => { if (keep[i]) { E.di.push(d - w0); E.h.push(E0.h[i]); E.exp.push(E0.exp[i]); E.earn.push(E0.earn[i]); for (const c in E0.comps) E.comps[c].push(E0.comps[c][i]); } });
+  const csets = X.component_sets && Object.keys(X.component_sets).length ? X.component_sets : (X.components.length ? {components: X.components} : {});
+  const csetNames = Object.keys(csets).sort((a, b) => (a === 'factors' ? -1 : b === 'factors' ? 1 : a.localeCompare(b)));
+  if (!ex.cset || !csets[ex.cset]) ex.cset = csetNames[0] || null;
+  X = Object.assign({}, X, {components: ex.cset ? csets[ex.cset].filter(c => E.comps[c]) : []});   // the drivers in use for this render
   if (!ex.c1 || !X.stats.data[ex.c1.stat]) ex.c1 = defaultClause(X, X.stats.cols.includes('atm_1m_z252') ? 'atm_1m_z252' : X.stats.cols[0]);
   if (ex.and2 && (!ex.c2 || !X.stats.data[ex.c2.stat])) ex.c2 = defaultClause(X, X.stats.cols.includes('regime') ? 'regime' : X.stats.cols[0]);
   let mask = maskOf(X, ex.c1); if (ex.and2 && ex.c2) { const m2 = maskOf(X, ex.c2); mask = mask.map((v, i) => v && m2[i]); }
@@ -542,7 +546,7 @@ function tabExplore() {
     return `<div class="frow" style="gap:8px">${statSel(k + '.stat', c.stat)}${cat ? `<span>in</span>${cats.map(v => `<button class="chip ${c.cats.has(v) ? 'on' : ''} ${c.stat === 'regime' ? 'st' : ''}" data-exchip="${k}" data-v="${esc(v)}" ${c.stat === 'regime' && c.cats.has(v) ? `style="background:${COL[v] || '#999'}"` : ''}>${esc(v)}</button>`).join('')}`
       : `<select data-ex="${k}.op">${[['>', 'above'], ['<', 'below'], ['between', 'between']].map(([v, l]) => `<option value="${v}" ${c.op === v ? 'selected' : ''}>${l}</option>`).join('')}</select><input type="number" step="any" data-ex="${k}.v1" value="${c.v1}" style="width:90px">${c.op === 'between' ? `<span>and</span><input type="number" step="any" data-ex="${k}.v2" value="${c.v2}" style="width:90px">` : ''}`}
       <span class="dim">${esc(X.stats.defs[c.stat] || '')}</span></div>`; };
-  let h = `<div class="ctl">${pairSel()}<label>strategy · tenor ${sel('ex.key', keys.map(k => [k, k.replace('|', ' · ') + 'd']), ex.key)}</label><label>horizon ${sel('ex.h', hs.map(v => [v, 'h=' + v]).concat([['exp', 'to expiry']]), ex.h)}</label><label>EWMA half-life <input type="number" data-ex="hl" value="${ex.hl}" min="1" style="width:60px"> entries</label>${X.components.length ? tog('ex.comps', ex.comps, 'show components') : ''}<span class="dim">earn is ${unit}</span></div>`;
+  let h = `<div class="ctl">${pairSel()}<label>strategy · tenor ${sel('ex.key', keys.map(k => [k, k.replace('|', ' · ') + 'd']), ex.key)}</label><label>horizon ${sel('ex.h', hs.map(v => [v, 'h=' + v]).concat([['exp', 'to expiry']]), ex.h)}</label><label>EWMA half-life <input type="number" data-ex="hl" value="${ex.hl}" min="1" style="width:60px"> entries</label>${csetNames.length > 1 ? `<label>drivers ${sel('ex.cset', csetNames.map(k => [k, k]), ex.cset)}</label>` : ''}${X.components.length ? tog('ex.comps', ex.comps, 'show drivers on the chart') : ''}<span class="dim">earn is ${unit}${ex.cset ? ` · drivers: ${X.components.map(c => c.replace('earn_', '')).join(', ')}` : ''}</span></div>`;
   const presets = [['all', 'whole history'], ['1', 'last 1y'], ['2', 'last 2y'], ['3', 'last 3y'], ['5', 'last 5y'], ['fit', 'first 70%'], ['confirm', 'last 30%']];
   h += `<div class="ctl"><label>period <input type="date" data-ex="from" value="${ex.from || S.dates[tw0]}" min="${S.dates[tw0]}" max="${S.dates[nAll - 1]}"> to <input type="date" data-ex="to" value="${ex.to || S.dates[nAll - 1]}" min="${S.dates[tw0]}" max="${S.dates[nAll - 1]}"></label><label>preset ${sel('ex.preset', presets, 'all')}</label><span class="dim">${n} days in view, ${S.dates[w0]} → ${S.dates[w1]}; every table below is computed on this period</span></div>`;
   h += `<div class="ctl" style="align-items:flex-start;flex-direction:column;gap:6px;background:var(--bg);padding:8px 10px;border-radius:4px"><div class="frow" style="gap:8px"><span class="lbl">condition</span>${clauseCtl(ex.c1, 'c1')}</div>${ex.and2 && ex.c2 ? `<div class="frow" style="gap:8px"><span class="lbl">and</span>${clauseCtl(ex.c2, 'c2')}<span class="mini" data-exand="0">remove</span></div>` : `<span class="mini" data-exand="1">+ and a second condition</span>`}</div>`;

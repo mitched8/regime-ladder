@@ -100,7 +100,7 @@ def _explore(f: Path, idx: pd.DatetimeIndex) -> dict | None:
         col = st[c]
         data[c] = [None if (isinstance(x, float) and math.isnan(x)) or x is None else (x if isinstance(x, str) else round(float(x), 4)) for x in col.tolist()]
     out = {"stats": {"cols": list(st.columns), "data": data, "defs": defs.get("defs", {}), "groups": defs.get("groups", {})},
-           "normalised_by": defs.get("normalised_by"), "components": defs.get("components", []), "entries": {}}
+           "normalised_by": defs.get("normalised_by"), "components": defs.get("components", []), "component_sets": defs.get("component_sets", {}), "entries": {}}
     ent = _csv(f / "entries.csv", parse_dates=["entry_date"])
     if ent is not None and len(ent):
         pos = pd.Series(np.arange(len(idx)), index=idx)

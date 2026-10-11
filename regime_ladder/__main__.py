@@ -69,7 +69,7 @@ def cmd_synth(a):
 
 def cmd_check(a):
     td = schema.coerce(pd.read_parquet(a.td))
-    rep = checks.check_trade_days(td)
+    rep = checks.check_trade_days(td, components=_cfg(a.config).get("components"))
     if a.labels:
         rep.update(checks.check_label_coverage(td, pd.read_parquet(a.labels)))
     print(checks.format_report(rep))

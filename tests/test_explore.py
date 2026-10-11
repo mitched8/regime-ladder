@@ -15,7 +15,8 @@ def _data():
 def test_entries_are_normalised_per_vega_and_sum_components():
     m, td = _data()
     e = explore.entries(td)
-    assert e.attrs["normalised_by"] == "vega" and set(e.attrs["components"]) == {"earn_trade", "earn_delta_hedge", "earn_vega_hedge"}
+    assert e.attrs["normalised_by"] == "vega" and {"earn_trade", "earn_delta_hedge", "earn_vega_hedge"} <= set(e.attrs["components"])
+    assert set(e.attrs["component_sets"]) == {"legs", "factors"} and np.allclose(e["earn"], e[e.attrs["component_sets"]["factors"]].sum(axis=1), atol=1e-6)
     assert set(e["h"].unique()) >= {1, 3, 5, 10, 20} and e["to_expiry"].any()
     # components sum to the total after normalisation too
     assert np.allclose(e["earn"], e[["earn_trade", "earn_delta_hedge", "earn_vega_hedge"]].sum(axis=1), atol=1e-6)
@@ -76,3 +77,19 @@ def test_extra_statistics_three_ways():
     for c in ("atm_1m_pct252", "atm_1m_minus_rv_1m", "spot_range20_z"):
         common = st[c].loc[:cut].dropna().index.intersection(st2[c].dropna().index)
         assert np.allclose(st[c].loc[common], st2[c].loc[common], atol=1e-9), c
+
+
+def test_component_sets_are_discovered_and_checked():
+    from regime_ladder import checks, schema
+    m, td = _data()
+    sets = schema.component_sets(td)
+    assert set(sets) == {"legs", "factors"} and "pnl_residual" in sets["factors"]
+    r = checks.check_trade_days(td)
+    assert r["components_sum_to_pnl_legs"][0] and r["components_sum_to_pnl_factors"][0]
+    # a source with its own names: declared in the config, verified like the others, kept by the explorer
+    td2 = td.drop(columns=sets["factors"]).assign(pnl_alpha=td["pnl"] * 0.7, pnl_beta=td["pnl"] * 0.3)
+    s2 = schema.component_sets(td2, {"mine": ["pnl_alpha", "pnl_beta"]})
+    assert s2["mine"] == ["pnl_alpha", "pnl_beta"] and "other" not in s2
+    assert checks.check_trade_days(td2)["info_components_other"][0]                 # without the config they are just reported
+    e = explore.entries(td2)
+    assert "earn_alpha" in e.columns

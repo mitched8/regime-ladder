@@ -153,12 +153,12 @@ def dump(market: pd.DataFrame, cfg: dict, pcfg: dict, lcfg: dict, gates_cfg: dic
         _w(out, "walk_forward.csv", wf, "evaluate.walk_forward(cum)", "out-of-sample state ladder vs unconditional, per group and h", index=False)
         _w(out, "gate_phase3.json", gates.gate_phase3(wf, gates_cfg), "gates.gate_phase3(walk_forward)", "Gate 3: out-of-sample improvement, rank IC, calibration slope")
     # 9 · the explorer's tables: per-entry normalised earn, and every statistic a trader can condition on
-    ent = explore.entries(td, horizons=tuple(h for h in cfg["horizons"] if h <= 20) or explore.HORIZONS) if td is not None else None
+    ent = explore.entries(td, horizons=tuple(h for h in cfg["horizons"] if h <= 20) or explore.HORIZONS, components=cfg.get("components")) if td is not None else None
     if ent is not None:
         _w(out, "entries.csv", ent, "explore.entries(td)", f"one row per entry date × horizon per group: cumulative earn of a fresh unit, total and by component, normalised by {ent.attrs['normalised_by']} at inception", index=False)
     stats, sdefs = explore.statistics(market, F, comp_frame, L, S, ch, ent, cfg=cfg.get("explore"))
     _w(out, "statistics.csv", stats, "explore.statistics(market, features, composite, leading, shock, characteristics, entries)", "every daily statistic the explorer can condition on (point-in-time); definitions in statistics_defs.json")
-    _w(out, "statistics_defs.json", {**sdefs, "normalised_by": ent.attrs["normalised_by"] if ent is not None else None, "components": ent.attrs["components"] if ent is not None else []},
+    _w(out, "statistics_defs.json", {**sdefs, "normalised_by": ent.attrs["normalised_by"] if ent is not None else None, "components": ent.attrs["components"] if ent is not None else [], "component_sets": ent.attrs.get("component_sets", {}) if ent is not None else {}},
        "explore.statistics(...)[1]", "one-line definition and group per statistic")
     if cfg.get("filters"):
         FT = explore.filters_to_tags(stats, cfg["filters"])

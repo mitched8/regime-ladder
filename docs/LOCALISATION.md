@@ -17,7 +17,7 @@ Produce a frame matching `regime_ladder/schema.py` from whatever the backtest re
 | `date` | source | one row per trading day of life |
 | `age` | derived: trading-day count from entry, starting at 1 | `checks.py` enforces consecutiveness |
 | `pnl` | sum of the source's P&L components | cash per unit standard notional |
-| `pnl_trade`, `pnl_delta_hedge`, `pnl_vega_hedge` | source components if available | `checks.py` verifies they sum to `pnl` |
+| `pnl_<name>` | any P&L attribution the source provides, one column per driver, each set summing to `pnl` | two sets are known by name and shown as drivers in the explorer: **factors** `pnl_spot, pnl_vol, pnl_rr, pnl_fly, pnl_rates, pnl_theta, pnl_residual` (the one to aim for: map the backtester's risk-factor attribution onto these names, put what it cannot attribute in `pnl_residual`) and **legs** `pnl_trade, pnl_delta_hedge, pnl_vega_hedge`; a table may carry both. A source with its own factor names is declared once in the config (`components: {mine: [pnl_a, pnl_b, ...]}`); `checks.py` verifies each set sums to `pnl`, the explorer offers each as a driver set |
 | `vega` | the strategy's own net vega per unit standard notional, **excluding the vega-hedge leg** | at age 1 this is the leg's inception vega, which is all `combine.to_vega_units` uses; only base legs are scaled, packages never are |
 | `gamma_cash`, `vanna`, `volga` | source Greeks if available | needed for the age-dependence diagnostics, not for the ladder |
 

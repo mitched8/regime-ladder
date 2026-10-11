@@ -225,6 +225,17 @@ def simulate_trades(market: pd.DataFrame, archetypes=DEMO_ARCHETYPES, tenor_days
     td["pnl_trade"] = td["pnl"] * 1.4
     td["pnl_delta_hedge"] = -td["pnl"] * 0.3
     td["pnl_vega_hedge"] = td["pnl"] - td["pnl_trade"] - td["pnl_delta_hedge"]
+    # a risk-factor attribution for the demo (the real one comes from the backtester): vol, spot (gamma), rr, fly, theta, residual
+    mv = pd.DataFrame({"d_atm": market["atm_1m"].diff(), "z2": (np.log(market["spot"]).diff() / (market["atm_1m"] / 100 / np.sqrt(252))) ** 2 - 1,
+                       "d_rr": market["rr25_1m"].diff() if "rr25_1m" in market else 0.0, "d_fly": market["fly25_1m"].diff() if "fly25_1m" in market else 0.0}).reindex(td["date"]).fillna(0.0)
+    load = {"straddle_atm": (1.0, 1.0, 0.1, 0.1), "rr_25d": (0.2, 0.6, 1.0, 0.1), "fly_10d": (0.3, 0.3, 0.1, 1.0)}
+    L = np.array([load.get(a, (0.5, 0.5, 0.5, 0.5)) for a in td["archetype"]])
+    td["pnl_vol"] = L[:, 0] * td["vega"].values * mv["d_atm"].values * 10
+    td["pnl_spot"] = L[:, 1] * td["vega"].values * mv["z2"].values * 3
+    td["pnl_rr"] = L[:, 2] * td["vega"].values * mv["d_rr"].values * 10
+    td["pnl_fly"] = L[:, 3] * td["vega"].values * mv["d_fly"].values * 10
+    td["pnl_theta"] = -0.4 * td["vega"].values
+    td["pnl_residual"] = td["pnl"] - td[["pnl_vol", "pnl_spot", "pnl_rr", "pnl_fly", "pnl_theta"]].sum(axis=1)
     return td
 
 

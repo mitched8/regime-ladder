@@ -9,10 +9,10 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .schema import COMPONENTS, REQUIRED
+from .schema import REQUIRED, component_sets
 
 
-def check_trade_days(td: pd.DataFrame, component_tol: float = 1e-6) -> dict:
+def check_trade_days(td: pd.DataFrame, component_tol: float = 1e-6, components: dict | None = None) -> dict:
     r = {}
     missing = [c for c in REQUIRED if c not in td.columns]
     r["required_columns"] = (not missing, f"missing: {missing}" if missing else "ok")
@@ -32,10 +32,13 @@ def check_trade_days(td: pd.DataFrame, component_tol: float = 1e-6) -> dict:
     r["dates_increase_with_age"] = (mono == 0, f"{mono} trades with non-increasing dates")
     before = int((td["date"] <= td["entry_date"]).sum())
     r["date_after_entry"] = (before == 0, f"{before} rows dated on/before entry")
-    if all(c in td.columns for c in COMPONENTS):
-        gap = (td["pnl"] - td[COMPONENTS].sum(axis=1)).abs()
+    for name, cols in component_sets(td, components).items():
+        if name == "other":
+            r["info_components_other"] = (True, f"attribution columns in no named set: {cols}")
+            continue
+        gap = (td["pnl"] - td[cols].sum(axis=1)).abs()
         n_bad = int((gap > component_tol).sum())
-        r["components_sum_to_pnl"] = (n_bad == 0, f"{n_bad} rows off by > {component_tol}; max gap {gap.max():.3g}")
+        r[f"components_sum_to_pnl_{name}"] = (n_bad == 0, f"{n_bad} rows off by > {component_tol}; max gap {gap.max():.3g}; columns {cols}")
     per_trade = td.groupby("trade_id")["age"].max()
     short = int((per_trade < td.groupby("trade_id")["tenor_days"].first()).sum())
     r["info_trades_not_yet_expired"] = (True, f"{short} trades shorter than tenor (live or truncated)")

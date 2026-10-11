@@ -21,7 +21,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .schema import COMPONENTS
+from .schema import component_columns
 
 BASE_LEGS = ("straddle_atm", "put_25d", "call_25d", "put_10d", "call_10d")
 STANDARD_COMBOS = {  # weights in vega units
@@ -52,7 +52,7 @@ def to_vega_units(td: pd.DataFrame, vega_col: str = "vega", legs=BASE_LEGS) -> p
     bad = out["_v0"].isna() | (out["_v0"] == 0)
     dropped = int(out.loc[bad, "trade_id"].nunique())
     out = out[~bad].copy()
-    for c in ["pnl"] + [c for c in COMPONENTS if c in out.columns]:
+    for c in ["pnl"] + component_columns(out):
         out[c] = out[c] / out["_v0"]
     res = pd.concat([out.drop(columns="_v0"), rest]).sort_values(["pair", "archetype", "trade_id", "age"]).reset_index(drop=True)
     res.attrs["dropped_trades_no_inception_vega"] = dropped
@@ -73,20 +73,21 @@ def combine(td: pd.DataFrame, weights: dict, name: str) -> pd.DataFrame:
         g = td[td["archetype"] == leg]
         if g.empty:
             raise ValueError(f"leg {leg!r} not in table")
-        cols = ["pnl"] + [c for c in COMPONENTS if c in g.columns]
+        cols = ["pnl"] + component_columns(g)
         h = g[KEY + ["date"] + cols].copy()
         for c in cols:
             h[c] = h[c] * w
         legs.append(h.set_index(KEY + ["date"]).rename(columns={c: f"{c}__{leg}" for c in cols}))
     joined = pd.concat(legs, axis=1, join="inner").reset_index()
     out = joined[KEY + ["date"]].copy()
-    for c in ["pnl"] + [c for c in COMPONENTS if any(col.startswith(c + "__") for col in joined.columns)]:
+    comps = sorted({col.split("__")[0] for col in joined.columns if col.startswith("pnl_")})
+    for c in ["pnl"] + comps:
         out[c] = joined[[col for col in joined.columns if col.startswith(c + "__")]].sum(axis=1)
     out["archetype"] = name
     out["trade_id"] = out["pair"] + "-" + name + "-" + out["entry_date"].dt.strftime("%Y-%m-%d") + "-" + out["tenor_days"].astype(str)
     out["remaining"] = out["tenor_days"] - out["age"]
     return out[["trade_id", "pair", "archetype", "tenor_days", "entry_date", "date", "age", "remaining", "pnl"]
-               + [c for c in COMPONENTS if c in out.columns]].sort_values(["trade_id", "age"]).reset_index(drop=True)
+               + component_columns(out)].sort_values(["trade_id", "age"]).reset_index(drop=True)
 
 
 def ev_linear(lad: pd.DataFrame, weights: dict, name: str) -> pd.DataFrame:
